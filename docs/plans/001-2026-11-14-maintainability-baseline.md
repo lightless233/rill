@@ -228,9 +228,13 @@ no FTS content maintenance, while real content changes remain indexed.
 Problem: the declared lint command cannot load its parser stack, and CI does not
 exercise it.
 
-Keep the current ESLint/typescript-eslint stack and select TypeScript's stable
-5.9 line within its declared supported range. Regenerate the lockfile through
-pnpm and include lint in the existing frontend workflow. Restore lint in
+The initial baseline repair kept the ESLint/typescript-eslint stack and selected
+TypeScript's stable 5.9 line within its declared supported range; that historical
+toolchain decision was later superseded when ESLint was replaced by Oxlint to
+support the current TypeScript line (see
+[package configuration](../../frontend/package.json) and
+[Oxlint configuration](../../frontend/.oxlintrc.json)). Regenerate the lockfile
+through pnpm and include lint in the existing frontend workflow. Restore lint in
 CONTRIBUTING's check list and remove its obsolete wait-for-TS-7-support note after
 the repair. Do not switch to prerelease lint dependencies or make unrelated
 framework upgrades. Fix real errors revealed by the functioning check; do not
@@ -240,7 +244,8 @@ errors require a material change outside this contract, report that concrete
 scope issue rather than quietly disabling checks or starting a broad rewrite.
 
 Primary scope: [package configuration](../../frontend/package.json),
-[lockfile](../../frontend/pnpm-lock.yaml), [ESLint](../../frontend/eslint.config.js),
+[lockfile](../../frontend/pnpm-lock.yaml), [Oxlint configuration](../../frontend/.oxlintrc.json)
+(replacing the removed `frontend/eslint.config.js`),
 and [frontend CI](../../.github/workflows/frontend.yml), plus
 [contributor checks](../../CONTRIBUTING.md). Regression coverage added
 by T1–T6 should exercise their behaviors through existing test conventions; this

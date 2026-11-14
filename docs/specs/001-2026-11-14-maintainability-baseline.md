@@ -43,7 +43,7 @@ which initial pulls complete; reproduce its queue behavior before changing it.
 | F06 | Historical browser interception: with 101 bookmarks and the older article outside the first lookup page, the ordinary article view displayed Star instead of Unstar. The starred view has a separate paginated resolution path and must not be described as having this same defect. | [Bookmark lookup](../../frontend/src/queries/bookmarks.ts), [article aggregation](../../frontend/src/hooks/use-article-list.ts) |
 | F07 | Historical browser interception: six matching articles, two loaded; the control labeled Mark all as read submitted only two IDs. The same loaded-list behavior remains. The mismatch is between the label and the actual scope. | [Article list action](../../frontend/src/components/article/article-list.tsx), [item API](../../backend/internal/handler/item.go) |
 | F08 | Historical local SQLite trace: changing only unread state deleted and inserted FTS shadow-table data. The update trigger still runs for every item update. | [Initial trigger](../../backend/internal/store/migrations/001_initial.sql), [item updates](../../backend/internal/store/item.go) |
-| F09 | Earlier frozen-lockfile installation built and typechecked successfully and passed 23 frontend tests, but lint failed because the resolved TypeScript and typescript-eslint versions were incompatible. The frontend CI does not run lint. These dependencies and workflow remain in this baseline. Existing frontend tests chiefly cover helpers and state primitives. | [Frontend dependencies](../../frontend/package.json), [lockfile](../../frontend/pnpm-lock.yaml), [ESLint configuration](../../frontend/eslint.config.js), [frontend workflow](../../.github/workflows/frontend.yml) |
+| F09 | Earlier frozen-lockfile installation built and typechecked successfully and passed 23 frontend tests, but lint failed because the resolved TypeScript and typescript-eslint versions were incompatible. The frontend CI does not run lint. These dependencies and workflow remained in the baseline (the original `frontend/eslint.config.js` was subsequently replaced by Oxlint). Existing frontend tests chiefly cover helpers and state primitives. | [Frontend dependencies](../../frontend/package.json), [lockfile](../../frontend/pnpm-lock.yaml), [Oxlint configuration](../../frontend/.oxlintrc.json), [frontend workflow](../../.github/workflows/frontend.yml) |
 | F10 | The trial image received an empty-Default visibility patch outside this fork. This checkout does not contain it. Preserve that already-requested behavior when the fork becomes the source for a replacement image. This is a customization transfer, not an upstream defect. | [Sidebar groups](../../frontend/src/components/feed/feed-list.tsx), [feed management](../../frontend/src/routes/feeds.lazy.tsx) |
 
 The earlier backend test packages passed race-enabled testing. OIDC implementation
@@ -244,8 +244,11 @@ removed after both fresh initialization and migration of an existing database.
 ### R8. Declared engineering checks are usable and meaningful
 
 Use mutually supported compiler/linter dependencies with a consistent lockfile.
-Keep the current ESLint stack and move TypeScript to its supported stable 5.9
-line; do not adopt a prerelease linter stack merely to retain TypeScript 7.
+The initial baseline decision kept ESLint and pinned TypeScript to 5.9 to avoid a
+prerelease linter stack; that historical choice was later superseded by
+migrating lint to Oxlint so the linter stays compatible with the current
+TypeScript line in [frontend dependencies](../../frontend/package.json) and the
+[Oxlint configuration](../../frontend/.oxlintrc.json).
 The lint command must execute successfully and run in frontend CI alongside the
 existing checks. Do not weaken assertions, bypass typing, disable legitimate
 rules, skip failing tests, or modify vendored UI components by hand to get green.
