@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createLazyFileRoute } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -33,16 +34,24 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { feedAPI, groupAPI } from "@/lib/api";
-import type { Feed, Group } from "@/lib/api";
+import type { AppInfoResponse, Feed, Group } from "@/lib/api";
 import { generateOPML, downloadFile } from "@/lib/opml";
 import { useI18n } from "@/lib/i18n";
+import {
+  INITIAL_REFRESH_ALL_SYNC_STATE,
+  reconcileRefreshAllState,
+  type RefreshAllSyncState,
+} from "@/lib/refresh-all";
 import { cn } from "@/lib/utils";
+import { useAppInfo } from "@/queries/app";
 import {
   useFeedLookup,
   useMoveFeedsToGroup,
   useRefreshFeeds,
 } from "@/queries/feeds";
 import { useDeleteGroup, useGroups, useUpdateGroup } from "@/queries/groups";
+import { queryKeys } from "@/queries/keys";
+import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import { useUIStore } from "@/store";
 import { FeedGroupCard } from "@/components/feed/feed-group-card";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -55,12 +64,29 @@ type StatusFilter = "all" | "error" | "paused";
 
 function FeedsPage() {
   const { t } = useI18n();
-  const { data: groups = [] } = useGroups();
-  const { feeds, getFeedsByGroup, isLoading: isFeedsLoading } = useFeedLookup();
+  const queryClient = useQueryClient();
+  const {
+    data: groups = [],
+    isLoading: isGroupsLoading,
+    isError: isGroupsError,
+    refetch: refetchGroups,
+  } = useGroups();
+  const {
+    feeds,
+    getFeedsByGroup,
+    isLoading: isFeedsLoading,
+    isError: isFeedsError,
+    refetch: refetchFeeds,
+  } = useFeedLookup();
   const updateGroupMutation = useUpdateGroup();
   const deleteGroupMutation = useDeleteGroup();
   const moveFeedsMutation = useMoveFeedsToGroup();
   const refreshFeedsMutation = useRefreshFeeds();
+  const [awaitingPostTriggerPoll, setAwaitingPostTriggerPoll] = useState(false);
+  const appInfoQuery = useAppInfo({ pollWhileRefreshAll: true });
+  const refreshSyncRef = useRef<RefreshAllSyncState>(
+    INITIAL_REFRESH_ALL_SYNC_STATE,
+  );
 
   const {
     setEditFeedOpen,
@@ -131,10 +157,50 @@ function FeedsPage() {
     });
   };
 
+  useEffect(() => {
+    const res = reconcileRefreshAllState(refreshSyncRef.current, {
+      refreshAllRunning: appInfoQuery.data?.refresh_all_running,
+      dataUpdatedAt: appInfoQuery.dataUpdatedAt,
+      isFetching: appInfoQuery.isFetching,
+      isError: appInfoQuery.isError,
+    });
+    refreshSyncRef.current = res.next;
+    if (res.shouldInvalidate) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feeds.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.items.all });
+    }
+  }, [
+    appInfoQuery.data?.refresh_all_running,
+    appInfoQuery.dataUpdatedAt,
+    appInfoQuery.isError,
+    appInfoQuery.isFetching,
+    queryClient,
+  ]);
+
   const handleRefreshAll = async () => {
     try {
       await refreshFeedsMutation.mutateAsync();
       toast.success(t("feeds.toast.refreshing"));
+      setAwaitingPostTriggerPoll(true);
+      try {
+        await queryClient.refetchQueries({ queryKey: queryKeys.app.info() });
+        const latestAppInfo = queryClient.getQueryData<AppInfoResponse>(
+          queryKeys.app.info(),
+        );
+        if (
+          latestAppInfo &&
+          !latestAppInfo.refresh_all_running &&
+          !refreshSyncRef.current.wasRunning
+        ) {
+          refreshSyncRef.current = INITIAL_REFRESH_ALL_SYNC_STATE;
+          void queryClient.invalidateQueries({ queryKey: queryKeys.feeds.all });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.items.all });
+        }
+      } catch {
+        // Trigger succeeded; status polling or the next view load will recover.
+      } finally {
+        setAwaitingPostTriggerPoll(false);
+      }
     } catch {
       toast.error(t("feeds.toast.refreshFailed"));
     }
@@ -200,7 +266,17 @@ function FeedsPage() {
   );
 
   const totalVisible = groupedFeeds.reduce((sum, g) => sum + g.feeds.length, 0);
-  const hasNoFeeds = !isFeedsLoading && feeds.length === 0;
+  const hasLoadError = isGroupsError || isFeedsError;
+  const isRefreshAllActive =
+    refreshFeedsMutation.isPending ||
+    awaitingPostTriggerPoll ||
+    Boolean(appInfoQuery.data?.refresh_all_running);
+  const handleRetryLoad = () => {
+    if (isGroupsError) void refetchGroups();
+    if (isFeedsError) void refetchFeeds();
+  };
+  const hasNoFeeds =
+    !isGroupsLoading && !isFeedsLoading && !hasLoadError && feeds.length === 0;
   const deletingGroupMoveHint = useMemo(() => {
     if (!deletingGroup) {
       return "";
@@ -304,12 +380,12 @@ function FeedsPage() {
               variant="outline"
               size="sm"
               onClick={() => setRefreshConfirmOpen(true)}
-              disabled={refreshFeedsMutation.isPending}
+              disabled={isRefreshAllActive}
             >
               <RefreshCw
                 className={cn(
                   "h-3.5 w-3.5 sm:mr-1.5",
-                  refreshFeedsMutation.isPending && "animate-spin",
+                  isRefreshAllActive && "animate-spin",
                 )}
               />
               <span className="hidden sm:inline">{t("feeds.refreshAll")}</span>
@@ -338,12 +414,23 @@ function FeedsPage() {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-2 p-4 sm:p-6">
-            {hasNoFeeds ? (
+            {hasLoadError && groups.length === 0 && feeds.length === 0 ? (
+              <QueryErrorState
+                message={t("feeds.loadFailed")}
+                onRetry={handleRetryLoad}
+              />
+            ) : hasNoFeeds ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 {t("feeds.empty")}
               </div>
             ) : (
               <>
+                {hasLoadError && (
+                  <QueryErrorBanner
+                    message={t("feeds.loadFailed")}
+                    onRetry={handleRetryLoad}
+                  />
+                )}
                 {visibleGroups.map(({ group, feeds: groupFeeds }) => {
                   const isCollapsed = collapsedGroups.has(group.id);
                   const isEditing = editingGroupId === group.id;

@@ -89,6 +89,21 @@ export function useArticleList(filters: ArticleListFilters) {
     [bookmarkByItemId],
   );
 
+  const isError = isStarredMode ? starred.isError : itemsQuery.isError;
+  const isFetchNextPageError = isStarredMode
+    ? starred.isFetchNextPageError
+    : itemsQuery.isFetchNextPageError;
+  const error = isStarredMode ? starred.error : itemsQuery.error;
+  const refetch = isStarredMode
+    ? starred.refetch
+    : () => void itemsQuery.refetch();
+  const retry = isStarredMode
+    ? starred.retry
+    : () =>
+        void (itemsQuery.isFetchNextPageError
+          ? itemsQuery.fetchNextPage()
+          : itemsQuery.refetch());
+
   return {
     articles,
     hasMore: isStarredMode ? starred.hasNextPage : itemsQuery.hasNextPage,
@@ -96,6 +111,11 @@ export function useArticleList(filters: ArticleListFilters) {
     isLoadingMore: isStarredMode
       ? starred.isFetchingNextPage
       : itemsQuery.isFetchingNextPage,
+    isError,
+    isFetchNextPageError,
+    error,
+    refetch,
+    retry,
     isStarredMode,
     fetchNextPage: isStarredMode
       ? starred.fetchNextPage

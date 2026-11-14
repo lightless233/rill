@@ -53,6 +53,7 @@ type validateFeedResponse struct {
 type appInfoResponse struct {
 	PullInterval            int     `json:"pull_interval"`
 	AllowedRefreshIntervals []int64 `json:"allowed_refresh_intervals"`
+	RefreshAllRunning       bool    `json:"refresh_all_running"`
 }
 
 type batchCreateFeedsRequest struct {
@@ -101,6 +102,7 @@ func (h *Handler) getAppInfo(c *gin.Context) {
 	dataResponse(c, appInfoResponse{
 		PullInterval:            h.config.PullInterval,
 		AllowedRefreshIntervals: allowedRefreshIntervals,
+		RefreshAllRunning:       h.isRefreshAllRunning(),
 	})
 }
 
@@ -391,6 +393,13 @@ func (h *Handler) finishRefreshAll() {
 	h.refreshAllMu.Lock()
 	h.refreshAllRunning = false
 	h.refreshAllMu.Unlock()
+}
+
+func (h *Handler) isRefreshAllRunning() bool {
+	h.refreshAllMu.Lock()
+	running := h.refreshAllRunning
+	h.refreshAllMu.Unlock()
+	return running
 }
 
 func (h *Handler) batchCreateFeeds(c *gin.Context) {

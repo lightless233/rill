@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -90,4 +91,77 @@ func TestManualAndInitialRefreshPassUnboundedParentContext(t *testing.T) {
 			t.Fatalf("timed out waiting for RefreshFeed call %d", i)
 		}
 	}
+}
+
+type blockingRefreshAllPuller struct {
+	recordingPuller
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingRefreshAllPuller) RefreshAll(ctx context.Context) (int, error) {
+	close(p.started)
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	return 0, nil
+}
+
+func TestGetAppInfoReflectsRefreshAllRunning(t *testing.T) {
+	puller := &blockingRefreshAllPuller{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	h, st := newAnonTestHandler(t, &puller.recordingPuller)
+	defer st.Close()
+	h.puller = puller
+
+	r := h.SetupRouter()
+
+	readRefreshAllRunning := func() bool {
+		t.Helper()
+		w := performRequest(r, http.MethodGet, "/api/app", nil, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /api/app status = %d, body = %s", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Data appInfoResponse `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode /api/app response: %v", err)
+		}
+		return resp.Data.RefreshAllRunning
+	}
+
+	if readRefreshAllRunning() {
+		t.Fatal("expected refresh_all_running=false initially")
+	}
+
+	w := performRequest(r, http.MethodPost, "/api/feeds/refresh", nil, nil)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("POST /api/feeds/refresh status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case <-puller.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for RefreshAll to start")
+	}
+
+	if !readRefreshAllRunning() {
+		t.Fatal("expected refresh_all_running=true while RefreshAll is running")
+	}
+
+	close(puller.release)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !readRefreshAllRunning() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected refresh_all_running to return to false after RefreshAll finished")
 }

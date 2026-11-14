@@ -217,6 +217,7 @@ export interface BatchCreateFeedsResponse {
 export interface AppInfoResponse {
   pull_interval: number;
   allowed_refresh_intervals: number[];
+  refresh_all_running: boolean;
 }
 
 // OIDC

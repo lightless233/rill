@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { FileText, Keyboard, Loader2, Search, Settings } from "lucide-react";
+import { QueryErrorBanner } from "@/components/query-error";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { searchAPI } from "@/lib/api";
+import { isAbortError } from "@/lib/query-status";
 import type { SearchFeed, SearchItem } from "@/lib/api/types";
 import {
   Command,
@@ -38,11 +40,18 @@ export function SearchDialog() {
   const [loading, setLoading] = useState(false);
   const [feeds, setFeeds] = useState<SearchFeed[]>([]);
   const [items, setItems] = useState<SearchItem[]>([]);
+  const [searchError, setSearchError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(Boolean(query));
+      setSearchError(false);
+      if (!query) {
+        setFeeds([]);
+        setItems([]);
+      }
       setDebouncedQuery(query);
     }, 500);
     return () => clearTimeout(timer);
@@ -55,27 +64,35 @@ export function SearchDialog() {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
 
     searchAPI
-      .search(debouncedQuery)
+      .search(debouncedQuery, 10, controller.signal)
       .then((res) => {
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         setFeeds(res.data?.feeds ?? []);
         setItems(res.data?.items ?? []);
+        setSearchError(false);
       })
-      .catch(() => {
-        if (cancelled) return;
+      .catch((error) => {
+        if (cancelled || controller.signal.aborted || isAbortError(error)) {
+          return;
+        }
         setFeeds([]);
         setItems([]);
+        setSearchError(true);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !controller.signal.aborted) {
+          setLoading(false);
+        }
       });
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, retryNonce]);
 
   const handleSelectFeed = (feedId: number) => {
     setSelectedFeed(feedId);
@@ -103,8 +120,16 @@ export function SearchDialog() {
       setFeeds([]);
       setItems([]);
       setLoading(false);
+      setSearchError(false);
     }
     setSearchOpen(open);
+  };
+
+  const handleRetrySearch = () => {
+    if (!debouncedQuery) return;
+    setSearchError(false);
+    setLoading(true);
+    setRetryNonce((n) => n + 1);
   };
 
   const handleOpenShortcuts = () => {
@@ -135,7 +160,17 @@ export function SearchDialog() {
               </div>
             )}
 
+            {!loading && searchError && debouncedQuery && (
+              <div className="p-2">
+                <QueryErrorBanner
+                  message={t("search.loadFailed")}
+                  onRetry={handleRetrySearch}
+                />
+              </div>
+            )}
+
             {!loading &&
+              !searchError &&
               debouncedQuery &&
               feeds.length === 0 &&
               items.length === 0 && (

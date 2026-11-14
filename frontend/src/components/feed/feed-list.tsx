@@ -1,5 +1,6 @@
 import { useLocation } from "@tanstack/react-router";
 import { Inbox, Layers, Star } from "lucide-react";
+import { QueryErrorBanner } from "@/components/query-error";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { isArticleFilter } from "@/lib/article-filter";
 import { useGroups } from "@/queries/groups";
@@ -13,10 +14,28 @@ import { FeedItem } from "./feed-item";
 
 export function FeedList() {
   const { t } = useI18n();
-  const { data: groups = [], isLoading } = useGroups();
-  const { feeds, getFeedsByGroup } = useFeedLookup();
+  const {
+    data: groups = [],
+    isLoading: isGroupsLoading,
+    isError: isGroupsError,
+    refetch: refetchGroups,
+  } = useGroups();
+  const {
+    feeds,
+    getFeedsByGroup,
+    isLoading: isFeedsLoading,
+    isError: isFeedsError,
+    refetch: refetchFeeds,
+  } = useFeedLookup();
   const { getTotalUnreadCount } = useUnreadCounts();
   const { total: starredTotal } = useBookmarkLookup();
+  const isLoading = isGroupsLoading || isFeedsLoading;
+  const hasLoadError = isGroupsError || isFeedsError;
+
+  const handleRetryLoad = () => {
+    if (isGroupsError) void refetchGroups();
+    if (isFeedsError) void refetchFeeds();
+  };
   const {
     selectedFeedId,
     selectedGroupId,
@@ -57,7 +76,7 @@ export function FeedList() {
     },
   ];
 
-  if (isLoading && groups.length === 0) {
+  if (isLoading && groups.length === 0 && !hasLoadError) {
     return (
       <div className="flex-1 p-4">
         <div className="space-y-2">
@@ -102,6 +121,14 @@ export function FeedList() {
             {t("search.group.feeds")}
           </span>
         </div>
+
+        {hasLoadError && (
+          <QueryErrorBanner
+            message={t("sidebar.loadFailed")}
+            onRetry={handleRetryLoad}
+            className="mx-1 mb-1"
+          />
+        )}
 
         {/* Feed groups */}
         <div className="w-full min-w-0 space-y-0.5">

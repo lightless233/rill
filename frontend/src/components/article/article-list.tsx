@@ -16,6 +16,8 @@ import { useGroups } from "@/queries/groups";
 import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { useI18n } from "@/lib/i18n";
+import { shouldAutoFetchEmptyPage } from "@/lib/query-status";
+import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import {
   articleListKey,
   useArticlePinsStore,
@@ -40,6 +42,9 @@ export function ArticleList() {
     hasMore,
     isLoading,
     isLoadingMore,
+    isError,
+    isFetchNextPageError,
+    retry,
     fetchNextPage,
     isItemStarred,
     getBookmarkByItemId,
@@ -50,7 +55,13 @@ export function ArticleList() {
   });
 
   const { data: groups = [] } = useGroups();
-  const { feeds, getFeedById, isLoading: isFeedsLoading } = useFeedLookup();
+  const {
+    feeds,
+    getFeedById,
+    isLoading: isFeedsLoading,
+    isError: isFeedsError,
+    refetch: refetchFeeds,
+  } = useFeedLookup();
   const markItemsRead = useMarkItemsRead();
   const markItemsUnread = useMarkItemsUnread();
   const createBookmark = useCreateBookmark();
@@ -83,12 +94,29 @@ export function ArticleList() {
   // When every loaded row has been read away (hidden from the unread view),
   // keep pulling deeper pages instead of dead-ending on an empty list while
   // the server still has unread items.
+  // Guarded on non-error states so failed requests do not spin an infinite loop.
   useEffect(() => {
-    if (isLoading || isLoadingMore) return;
-    if (articles.length === 0 && hasMore) {
+    if (
+      shouldAutoFetchEmptyPage({
+        isLoading,
+        isLoadingMore,
+        isError,
+        isFetchNextPageError,
+        itemCount: articles.length,
+        hasMore,
+      })
+    ) {
       fetchNextPage();
     }
-  }, [articles.length, hasMore, isLoading, isLoadingMore, fetchNextPage]);
+  }, [
+    articles.length,
+    fetchNextPage,
+    hasMore,
+    isError,
+    isFetchNextPageError,
+    isLoading,
+    isLoadingMore,
+  ]);
 
   let title = t("article.list.all");
   if (selectedFeedId) {
@@ -100,7 +128,8 @@ export function ArticleList() {
   }
 
   const unreadCount = articles.filter((a) => a.unread).length;
-  const hasNoFeeds = !isFeedsLoading && feeds.length === 0;
+  const hasArticleError = isError || isFetchNextPageError;
+  const hasNoFeeds = !isFeedsLoading && !isFeedsError && feeds.length === 0;
 
   const handleToggleRead = useCallback(
     async (article: Item) => {
@@ -197,7 +226,7 @@ export function ArticleList() {
             {/* Article list */}
         <ScrollArea className="min-h-0 flex-1">
           <div>
-            {isLoading || (articles.length === 0 && hasMore) ? (
+            {isLoading || (articles.length === 0 && hasMore && !hasArticleError) ? (
               <div className="space-y-2 p-2">
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div
@@ -207,7 +236,17 @@ export function ArticleList() {
                 ))}
               </div>
             ) : articles.length === 0 ? (
-              hasNoFeeds ? (
+              hasArticleError ? (
+                <QueryErrorState
+                  message={t("article.list.loadFailed")}
+                  onRetry={retry}
+                />
+              ) : isFeedsError && feeds.length === 0 ? (
+                <QueryErrorState
+                  message={t("sidebar.loadFailed")}
+                  onRetry={() => void refetchFeeds()}
+                />
+              ) : hasNoFeeds ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
                   <p className="text-sm text-muted-foreground">
                     {t("article.list.noFeeds")}
@@ -229,6 +268,14 @@ export function ArticleList() {
               )
             ) : (
               <>
+                {isError && !isFetchNextPageError && (
+                  <div className="p-2">
+                    <QueryErrorBanner
+                      message={t("article.list.loadFailed")}
+                      onRetry={retry}
+                    />
+                  </div>
+                )}
                 {articles.map((article) => {
                   const feed = getFeedById(article.feed_id);
                   const bookmark = getBookmarkByItemId(article.id);
@@ -250,23 +297,32 @@ export function ArticleList() {
                     />
                   );
                 })}
-                {hasMore && (
-                  <div className="flex justify-center py-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fetchNextPage()}
-                      disabled={isLoadingMore}
-                      className="gap-2"
-                    >
-                      {isLoadingMore && (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      )}
-                      {isLoadingMore
-                        ? t("article.list.loading")
-                        : t("article.list.loadMore")}
-                    </Button>
+                {hasMore && isFetchNextPageError ? (
+                  <div className="p-2">
+                    <QueryErrorBanner
+                      message={t("article.list.loadFailed")}
+                      onRetry={retry}
+                    />
                   </div>
+                ) : (
+                  hasMore && (
+                    <div className="flex justify-center py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchNextPage()}
+                        disabled={isLoadingMore}
+                        className="gap-2"
+                      >
+                        {isLoadingMore && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
+                        {isLoadingMore
+                          ? t("article.list.loading")
+                          : t("article.list.loadMore")}
+                      </Button>
+                    </div>
+                  )
                 )}
               </>
             )}

@@ -24,7 +24,8 @@ export function useFeeds() {
 }
 
 export function useFeedLookup() {
-  const { data: feeds = [], isLoading } = useFeeds();
+  const { data, isLoading, isError, isSuccess, error, refetch } = useFeeds();
+  const feeds = useMemo(() => data ?? [], [data]);
 
   const feedMap = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds]);
 
@@ -38,31 +39,53 @@ export function useFeedLookup() {
     [feeds],
   );
 
-  return { feeds, getFeedById, getFeedsByGroup, isLoading };
+  return {
+    feeds,
+    getFeedById,
+    getFeedsByGroup,
+    isLoading,
+    isError,
+    isSuccess,
+    error,
+    refetch,
+  };
 }
 
 export function useUnreadCounts() {
-  const { data: feeds = [] } = useFeeds();
+  const { data: feeds, isError, error } = useFeeds();
 
   const getUnreadCount = useCallback(
-    (feedId: number) => feeds.find((f) => f.id === feedId)?.unread_count ?? 0,
+    (feedId: number) =>
+      feeds ? (feeds.find((f) => f.id === feedId)?.unread_count ?? 0) : undefined,
     [feeds],
   );
 
   const getGroupUnreadCount = useCallback(
     (groupId: number) =>
       feeds
-        .filter((f) => f.group_id === groupId)
-        .reduce((sum, f) => sum + (f.unread_count ?? 0), 0),
+        ? feeds
+            .filter((f) => f.group_id === groupId)
+            .reduce((sum, f) => sum + (f.unread_count ?? 0), 0)
+        : undefined,
     [feeds],
   );
 
   const getTotalUnreadCount = useCallback(
-    () => feeds.reduce((sum, f) => sum + (f.unread_count ?? 0), 0),
+    () =>
+      feeds
+        ? feeds.reduce((sum, f) => sum + (f.unread_count ?? 0), 0)
+        : undefined,
     [feeds],
   );
 
-  return { getUnreadCount, getGroupUnreadCount, getTotalUnreadCount };
+  return {
+    hasData: feeds !== undefined,
+    isError,
+    error,
+    getUnreadCount,
+    getGroupUnreadCount,
+    getTotalUnreadCount,
+  };
 }
 
 export function useCreateFeed() {
@@ -119,6 +142,7 @@ export function useRefreshFeeds() {
   return useMutation({
     mutationFn: () => feedAPI.refresh(),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.app.info() });
       qc.invalidateQueries({ queryKey: queryKeys.feeds.all });
       qc.invalidateQueries({ queryKey: queryKeys.items.all });
     },

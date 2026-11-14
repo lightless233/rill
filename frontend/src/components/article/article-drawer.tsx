@@ -4,9 +4,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Loader2,
   Star,
   X,
 } from "lucide-react";
+import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -74,10 +76,12 @@ export function ArticleDrawer() {
     selectedArticleId !== null &&
     selectedArticleId > 0 &&
     (isStarredMode || storeArticle === null);
-  const { data: fetchedArticle } = useItem(
-    selectedArticleId,
-    shouldFetchArticle,
-  );
+  const {
+    data: fetchedArticle,
+    isLoading: isItemLoading,
+    isError: isItemError,
+    refetch: refetchItem,
+  } = useItem(selectedArticleId, shouldFetchArticle);
 
   const article: Item | null =
     (isStarredMode ? fetchedArticle ?? storeArticle : storeArticle ?? fetchedArticle) ??
@@ -190,7 +194,7 @@ export function ArticleDrawer() {
         className="data-[side=right]:w-full data-[side=right]:sm:max-w-[max(840px,60vw)] p-0"
         showCloseButton={false}
       >
-        {article && (
+        {article ? (
           <div className="flex h-full flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
@@ -263,6 +267,13 @@ export function ArticleDrawer() {
             {/* Content */}
             <ScrollArea className="min-h-0 flex-1">
               <article className="min-w-0 px-5 py-6 sm:px-12 sm:py-8">
+                {shouldFetchArticle && isItemError && (
+                  <QueryErrorBanner
+                    message={t("article.detail.loadFailed")}
+                    onRetry={() => void refetchItem()}
+                    className="mb-4"
+                  />
+                )}
                 <div className="space-y-3">
                   <h1 className="text-[28px] font-bold leading-[1.3]">
                     {article.title}
@@ -341,6 +352,34 @@ export function ArticleDrawer() {
                 {t("common.next")}
                 <ChevronRight className="h-4 w-4" />
               </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-end border-b px-4 py-3 sm:px-6">
+              <SheetTitle className="sr-only">
+                {isItemLoading
+                  ? t("article.list.loading")
+                  : t("article.detail.loadFailed")}
+              </SheetTitle>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSelectedArticle(null)}
+                aria-label={t("common.cancel")}
+              >
+                <X className="h-[18px] w-[18px] text-muted-foreground" />
+              </Button>
+            </div>
+            <div className="flex flex-1 items-center justify-center p-6">
+              {isItemLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              ) : (
+                <QueryErrorState
+                  message={t("article.detail.loadFailed")}
+                  onRetry={() => void refetchItem()}
+                />
+              )}
             </div>
           </div>
         )}

@@ -103,6 +103,11 @@ export interface StarredItemsResult {
   hasNextPage: boolean;
   isLoading: boolean;
   isFetchingNextPage: boolean;
+  isError: boolean;
+  isFetchNextPageError: boolean;
+  error: Error | null;
+  refetch: () => void;
+  retry: () => void;
   fetchNextPage: () => void;
 }
 
@@ -142,6 +147,14 @@ export function useStarredItems(
     hasNextPage: query.hasNextPage,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
+    isError: query.isError,
+    isFetchNextPageError: query.isFetchNextPageError,
+    error: query.error,
+    refetch: () => void query.refetch(),
+    retry: () =>
+      void (query.isFetchNextPageError
+        ? query.fetchNextPage()
+        : query.refetch()),
     fetchNextPage: () => void query.fetchNextPage(),
   };
 }

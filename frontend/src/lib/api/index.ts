@@ -139,9 +139,10 @@ export const settingsAPI = {
 
 // Search APIs
 export const searchAPI = {
-  search: (q: string, limit = 10) =>
+  search: (q: string, limit = 10, signal?: AbortSignal) =>
     api.get<APIResponse<SearchResponse>>(
       `/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+      signal ? { signal } : undefined,
     ),
 };
 
