@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Circle,
   CircleCheck,
@@ -93,13 +94,44 @@ export function ArticleDrawer() {
   // watch the same unread bit or a manual mark-unread gets overwritten.
   const readArticle = storeArticle ?? fetchedArticle ?? null;
   const canToggleRead = readArticle !== null && readArticle.id > 0;
-  const feed = article ? getFeedById(article.feed_id) : null;
-  const bookmark = article ? getBookmarkByItemId(article.id) : null;
-  const activeBookmarkId = article
-    ? (article.bookmark_id ?? bookmark?.id ?? null)
+  // Preserve the closing article snapshot during Sheet's exit transition so the
+  // drawer slides out with its content intact instead of flashing blank.
+  const [closingSnapshot, setClosingSnapshot] = useState<{
+    article: Item;
+    unread: boolean;
+  } | null>(null);
+  const activeUnread = readArticle?.unread ?? false;
+
+  if (article !== null) {
+    if (
+      closingSnapshot?.article !== article ||
+      closingSnapshot.unread !== activeUnread
+    ) {
+      setClosingSnapshot({ article, unread: activeUnread });
+    }
+  } else if (selectedArticleId !== null && closingSnapshot !== null) {
+    setClosingSnapshot(null);
+  }
+
+  const displayedArticle =
+    article ??
+    (selectedArticleId === null ? (closingSnapshot?.article ?? null) : null);
+  const displayedUnread =
+    readArticle?.unread ??
+    (selectedArticleId === null ? (closingSnapshot?.unread ?? false) : false);
+  const displayedCanToggleRead =
+    displayedArticle !== null && displayedArticle.id > 0;
+  const feed = displayedArticle ? getFeedById(displayedArticle.feed_id) : null;
+  const bookmark = displayedArticle
+    ? getBookmarkByItemId(displayedArticle.id)
+    : null;
+  const activeBookmarkId = displayedArticle
+    ? (displayedArticle.bookmark_id ?? bookmark?.id ?? null)
     : null;
   const starred = activeBookmarkId !== null;
-  const safeArticleLink = article ? toSafeExternalUrl(article.link) : null;
+  const safeArticleLink = displayedArticle
+    ? toSafeExternalUrl(displayedArticle.link)
+    : null;
 
   const autoMarkRead = usePreferencesStore((s) => s.autoMarkRead);
   const autoMarkDelayMs = autoMarkReadDelayMs(autoMarkRead);
@@ -197,13 +229,21 @@ export function ArticleDrawer() {
     });
 
   return (
-    <Sheet open={selectedArticleId !== null} onOpenChange={handleOpenChange}>
+    <Sheet
+      open={selectedArticleId !== null}
+      onOpenChange={handleOpenChange}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          setClosingSnapshot(null);
+        }
+      }}
+    >
       <SheetContent
         side="right"
         className="data-[side=right]:w-full data-[side=right]:sm:max-w-[max(840px,60vw)] p-0"
         showCloseButton={false}
       >
-        {article ? (
+        {displayedArticle ? (
           <div className="flex h-full flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
@@ -212,15 +252,15 @@ export function ArticleDrawer() {
                   variant="outline"
                   size="sm"
                   onClick={handleToggleRead}
-                  disabled={!canToggleRead}
+                  disabled={!displayedCanToggleRead}
                   className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
                 >
-                  {(readArticle?.unread ?? false) ? (
+                  {displayedUnread ? (
                     <Circle className="h-4 w-4 text-muted-foreground" />
                   ) : (
                     <CircleCheck className="h-4 w-4 text-primary" />
                   )}
-                  {(readArticle?.unread ?? false)
+                  {displayedUnread
                     ? t("article.action.markRead")
                     : t("article.action.markUnread")}
                 </Button>
@@ -261,7 +301,9 @@ export function ArticleDrawer() {
                 )}
               </div>
 
-              <SheetTitle className="sr-only">{article.title}</SheetTitle>
+              <SheetTitle className="sr-only">
+                {displayedArticle.title}
+              </SheetTitle>
 
               <Button
                 variant="ghost"
@@ -285,10 +327,10 @@ export function ArticleDrawer() {
                 )}
                 <div className="space-y-3">
                   <h1 className="text-[28px] font-bold leading-[1.3]">
-                    {article.title}
+                    {displayedArticle.title}
                   </h1>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                    {article.feed_id > 0 ? (
+                    {displayedArticle.feed_id > 0 ? (
                       <button
                         type="button"
                         onClick={handleOpenFeed}
@@ -312,7 +354,7 @@ export function ArticleDrawer() {
                       </span>
                     )}
                     <span className="text-muted-foreground">
-                      {formatDate(article.pub_date)}
+                      {formatDate(displayedArticle.pub_date)}
                     </span>
                     {safeArticleLink ? (
                       <a
@@ -331,7 +373,7 @@ export function ArticleDrawer() {
                   className="typeset typeset-article mt-6 min-w-0 max-w-none"
                   dangerouslySetInnerHTML={{
                     __html: processArticleContent(
-                      article.content,
+                      displayedArticle.content,
                       safeArticleLink ?? undefined,
                     ),
                   }}
