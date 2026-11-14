@@ -194,7 +194,7 @@ flowchart TD
 - Login attempt rate limit (`FUSION_LOGIN_*`)
 - Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS
 - Optional OIDC SSO (`FUSION_OIDC_*`)
-- URL validation + private-network blocking by default for feed fetches
+- URL validation + private-network blocking by default for feed fetches and discovery (`httpc` pins resolved public IPs on direct dials; configured proxies may be private while feed targets still require public local DNS resolution unless `FUSION_ALLOW_PRIVATE_FEEDS` is enabled)
 - CORS allowlist via `FUSION_CORS_ALLOWED_ORIGINS`
 - Trusted proxy list via `FUSION_TRUSTED_PROXIES`
 

@@ -1,13 +1,9 @@
 package handler
 
-import (
-	"testing"
-
-	"github.com/0x2E/feedfinder"
-)
+import "testing"
 
 func TestNormalizeDiscoveredFeedsNormalizesTitles(t *testing.T) {
-	found := []feedfinder.Feed{
+	found := []discoveredFeed{
 		{Title: "  Blog =&gt; Notes  ", Link: "http://example.com/a.xml"},
 		{Title: "AT&T Feed", Link: "http://example.com/b.xml"},
 		{Title: "std::vector&lt;int&gt;", Link: "http://example.com/c.xml"},

@@ -28,6 +28,11 @@ func badRequestError(c *gin.Context, message string) {
 	c.JSON(400, gin.H{"error": message})
 }
 
+// badGatewayError returns 502 with the given message when an upstream fetch fails.
+func badGatewayError(c *gin.Context, message string) {
+	c.JSON(502, gin.H{"error": message})
+}
+
 // unauthorizedError returns 401.
 func unauthorizedError(c *gin.Context) {
 	c.JSON(401, gin.H{"error": "unauthorized"})

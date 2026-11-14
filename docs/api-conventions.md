@@ -58,6 +58,7 @@ Handlers report failures as `{"error": "<message>"}`:
 - `404` — `"<resource> not found"`
 - `429` — `"too many login attempts"` (plus `Retry-After`)
 - `500` — `"internal server error"` (details are logged server-side only)
+- `502` — upstream fetch failure (e.g., feed validation upstream DNS, connection, timeout, or non-2xx failure)
 
 Three cases return the status with an empty body instead: unknown routes
 (404), CORS origin rejection (403), and panic recovery (500).

@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/0x2E/feedfinder"
+	"log/slog"
+
 	"github.com/0x2E/fusion/internal/pkg/httpc"
 	"github.com/0x2E/fusion/internal/pull"
 	"github.com/0x2E/fusion/internal/store"
 	"github.com/gin-gonic/gin"
-	"github.com/mmcdole/gofeed"
 )
 
 type createFeedRequest struct {
@@ -147,13 +146,17 @@ func (h *Handler) createFeed(c *gin.Context) {
 		badRequestError(c, "invalid link")
 		return
 	}
+	if _, err := httpc.ValidateProxyURL(req.Proxy); err != nil {
+		badRequestError(c, "invalid proxy")
+		return
+	}
 	refreshInterval, err := normalizeCreateRefreshInterval(req.RefreshIntervalSeconds)
 	if err != nil {
 		badRequestError(c, err.Error())
 		return
 	}
 
-	feed, err := h.store.CreateFeed(req.GroupID, req.Name, req.Link, req.SiteURL, req.Proxy, refreshInterval)
+	feed, err := h.store.CreateFeed(req.GroupID, req.Name, req.Link, req.SiteURL, strings.TrimSpace(req.Proxy), refreshInterval)
 	if err != nil {
 		internalError(c, err, "create feed")
 		return
@@ -206,7 +209,12 @@ func (h *Handler) updateFeed(c *gin.Context) {
 		params.Suspended = req.Suspended
 	}
 	if req.Proxy != nil {
-		params.Proxy = req.Proxy
+		if _, err := httpc.ValidateProxyURL(*req.Proxy); err != nil {
+			badRequestError(c, "invalid proxy")
+			return
+		}
+		trimmedProxy := strings.TrimSpace(*req.Proxy)
+		params.Proxy = &trimmedProxy
 	}
 	// refresh_interval_seconds on update: absent = keep, 0 = clear back to the
 	// global interval, other values must be whitelisted.
@@ -274,45 +282,31 @@ func (h *Handler) validateFeed(c *gin.Context) {
 	target := strings.TrimSpace(req.URL)
 	proxy := strings.TrimSpace(req.Proxy)
 	allowPrivateFeeds := h.config != nil && h.config.AllowPrivateFeeds
-	if err := httpc.ValidateRequestURL(c.Request.Context(), target, allowPrivateFeeds); err != nil {
-		badRequestError(c, "invalid url")
-		return
-	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), discoveryRequestTimeout)
 	defer cancel()
 
-	var finderOptions *feedfinder.Options
-	if proxy != "" {
-		finderOptions = &feedfinder.Options{RequestProxy: &proxy}
-	}
-	found, err := feedfinder.Find(ctx, target, finderOptions)
+	feeds, err := discoverFeeds(ctx, target, proxy, allowPrivateFeeds)
 	if err != nil {
-		slog.Warn("feed discovery failed", "url", target, "error", err)
-	}
-
-	feeds := normalizeDiscoveredFeeds(found)
-	if !allowPrivateFeeds {
-		filtered := make([]discoveredFeed, 0, len(feeds))
-		for _, feed := range feeds {
-			if err := httpc.ValidateRequestURL(ctx, feed.Link, false); err == nil {
-				filtered = append(filtered, feed)
-			}
+		var upstreamErr *upstreamFetchError
+		switch {
+		case errors.Is(err, httpc.ErrInvalidURL), errors.Is(err, httpc.ErrPrivateTarget):
+			badRequestError(c, "invalid url")
+		case errors.Is(err, httpc.ErrInvalidProxy):
+			badRequestError(c, "invalid proxy")
+		case errors.Is(err, httpc.ErrResolveHost), errors.As(err, &upstreamErr):
+			slog.Warn("feed discovery upstream failure", "url", target, "error", err)
+			badGatewayError(c, "failed to fetch feed url")
+		default:
+			internalError(c, err, "validate feed")
 		}
-		feeds = filtered
-	}
-
-	if len(feeds) == 0 {
-		title, parseErr := h.parseFeedTitle(ctx, target, proxy)
-		if parseErr == nil {
-			feeds = append(feeds, discoveredFeed{Title: title, Link: target})
-		}
+		return
 	}
 
 	dataResponse(c, validateFeedResponse{Feeds: feeds})
 }
 
-func normalizeDiscoveredFeeds(found []feedfinder.Feed) []discoveredFeed {
+func normalizeDiscoveredFeeds(found []discoveredFeed) []discoveredFeed {
 	result := make([]discoveredFeed, 0, len(found))
 	seen := make(map[string]struct{}, len(found))
 
@@ -326,11 +320,6 @@ func normalizeDiscoveredFeeds(found []feedfinder.Feed) []discoveredFeed {
 		}
 
 		seen[link] = struct{}{}
-		// feedfinder mixes gofeed-parsed feed titles with page <title>/<link>
-		// text the HTML finder already decoded once; Feed carries no source
-		// marker, so page-derived names take one extra decode here. That is
-		// the same bounded residual as item titles and keeps both name sources
-		// on one form.
 		result = append(result, discoveredFeed{
 			Title: pull.NormalizeTitle(feed.Title),
 			Link:  link,
@@ -338,42 +327,6 @@ func normalizeDiscoveredFeeds(found []feedfinder.Feed) []discoveredFeed {
 	}
 
 	return result
-}
-
-func (h *Handler) parseFeedTitle(ctx context.Context, target, proxy string) (string, error) {
-	allowPrivateFeeds := h.config != nil && h.config.AllowPrivateFeeds
-
-	client, err := httpc.NewClient(30*time.Second, proxy, allowPrivateFeeds)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return "", err
-	}
-	httpc.SetDefaultHeaders(req)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.New("feed fetch failed")
-	}
-
-	parsedFeed, err := gofeed.NewParser().Parse(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if parsedFeed == nil {
-		return "", nil
-	}
-
-	return pull.NormalizeTitle(parsedFeed.Title), nil
 }
 
 func (h *Handler) refreshFeed(c *gin.Context) {
