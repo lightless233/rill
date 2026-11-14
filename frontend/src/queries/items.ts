@@ -8,7 +8,13 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { itemAPI, type Feed, type Item, type ListItemsParams } from "@/lib/api";
+import {
+  itemAPI,
+  type Feed,
+  type Item,
+  type ListItemsParams,
+  type MarkAllItemsReadRequest,
+} from "@/lib/api";
 import {
   normalizeItemFilters,
   queryKeys,
@@ -20,7 +26,21 @@ import type { BookmarksInfiniteData } from "./bookmarks";
 
 type ItemListResponse = Awaited<ReturnType<typeof itemAPI.list>>;
 export type ItemsInfiniteData = InfiniteData<ItemListResponse, string | null>;
+
+// Mirrors the backend's maxBatchUpdateIDs for PATCH /items/-/read and -/unread.
+const MAX_BATCH_IDS = 1000;
+
+// Bumped whenever a whole-scope mark-all-read succeeds. A read-state mutation
+// started earlier carries the older epoch, so its late failure must not roll
+// rows back to unread over the newer server-wide result.
+const markAllEpochs = new WeakMap<QueryClient, number>();
+
+function getMarkAllEpoch(qc: QueryClient) {
+  return markAllEpochs.get(qc) ?? 0;
+}
+
 export type ItemsMutationContext = {
+  markAllEpoch: number;
   targetUnread: boolean;
   prevItemUnreadById: Map<number, boolean>;
   prevBookmarkUnreadByItemId: Map<number, boolean>;
@@ -219,6 +239,7 @@ export function beginItemsReadStateOptimisticUpdate(
   }
 
   return {
+    markAllEpoch: getMarkAllEpoch(qc),
     targetUnread,
     prevItemUnreadById,
     prevBookmarkUnreadByItemId,
@@ -230,7 +251,7 @@ export function rollbackItemsReadStateMutation(
   qc: QueryClient,
   context: ItemsMutationContext | undefined,
 ) {
-  if (!context) return;
+  if (!context || context.markAllEpoch !== getMarkAllEpoch(qc)) return;
 
   // Surgical field-level rollback preserves concurrent bookmark_id / list edits
   // committed while the read-state request was still in flight.
@@ -325,10 +346,15 @@ function useSetItemsReadState(targetUnread: boolean) {
 
   return useMutation({
     mutationFn: async (ids: number[]) => {
-      if (targetUnread) {
-        await itemAPI.markUnread({ ids });
-      } else {
-        await itemAPI.markRead({ ids });
+      // Sequential chunks: a failure stops the rest, leaving earlier chunks
+      // applied on the server (reconciled in onError).
+      for (let i = 0; i < ids.length; i += MAX_BATCH_IDS) {
+        const chunk = ids.slice(i, i + MAX_BATCH_IDS);
+        if (targetUnread) {
+          await itemAPI.markUnread({ ids: chunk });
+        } else {
+          await itemAPI.markRead({ ids: chunk });
+        }
       }
 
       return ids;
@@ -341,13 +367,40 @@ function useSetItemsReadState(targetUnread: boolean) {
 
       return beginItemsReadStateOptimisticUpdate(qc, ids, targetUnread);
     },
-    onError: (_error, _ids, context) => {
+    onError: async (_error, ids, context) => {
       rollbackItemsReadStateMutation(qc, context);
+      // A multi-chunk failure may have been partially applied server-side, so
+      // the blanket rollback can disagree with the server; refetch to settle.
+      if (ids.length > MAX_BATCH_IDS) {
+        await qc.invalidateQueries({ queryKey: queryKeys.items.all });
+      }
     },
     onSettled: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.feeds.all });
     },
   });
+}
+
+export function buildMarkAllItemsReadPayload(
+  selectedFeedId: number | null,
+  selectedGroupId: number | null,
+): MarkAllItemsReadRequest {
+  if (selectedFeedId !== null) {
+    return { feed_id: selectedFeedId };
+  }
+  if (selectedGroupId !== null) {
+    return { group_id: selectedGroupId };
+  }
+  return {};
+}
+
+export async function invalidateAfterMarkAllRead(qc: QueryClient) {
+  markAllEpochs.set(qc, getMarkAllEpoch(qc) + 1);
+  await Promise.all([
+    qc.invalidateQueries({ queryKey: queryKeys.items.all }),
+    qc.invalidateQueries({ queryKey: queryKeys.feeds.all }),
+    qc.invalidateQueries({ queryKey: queryKeys.bookmarks.lists() }),
+  ]);
 }
 
 export function useMarkItemsRead() {
@@ -356,4 +409,13 @@ export function useMarkItemsRead() {
 
 export function useMarkItemsUnread() {
   return useSetItemsReadState(true);
+}
+
+export function useMarkAllItemsRead() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: MarkAllItemsReadRequest) => itemAPI.markAllRead(data),
+    onSuccess: () => invalidateAfterMarkAllRead(qc),
+  });
 }

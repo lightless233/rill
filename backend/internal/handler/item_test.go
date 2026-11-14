@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/0x2E/fusion/internal/model"
@@ -147,4 +148,123 @@ func TestListItemsCursorWithOrderByCreatedAt(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for before cursor with order_by=created_at, got %d", w.Code)
 	}
+}
+
+func TestMarkAllItemsRead(t *testing.T) {
+	h, st := newFeverTestHandler(t)
+
+	group1, err := st.CreateGroup("Group 1")
+	if err != nil {
+		t.Fatalf("CreateGroup 1: %v", err)
+	}
+	group2, err := st.CreateGroup("Group 2")
+	if err != nil {
+		t.Fatalf("CreateGroup 2: %v", err)
+	}
+	feed1, err := st.CreateFeed(group1.ID, "Feed 1", "https://example.com/f1", "https://example.com", "", nil)
+	if err != nil {
+		t.Fatalf("CreateFeed 1: %v", err)
+	}
+	feed2, err := st.CreateFeed(group1.ID, "Feed 2", "https://example.com/f2", "https://example.com", "", nil)
+	if err != nil {
+		t.Fatalf("CreateFeed 2: %v", err)
+	}
+	feed3, err := st.CreateFeed(group2.ID, "Feed 3", "https://example.com/f3", "https://example.com", "", nil)
+	if err != nil {
+		t.Fatalf("CreateFeed 3: %v", err)
+	}
+
+	item1, err := st.CreateItem(feed1.ID, "g1", "Item 1", "https://example.com/1", "c", 100)
+	if err != nil {
+		t.Fatalf("CreateItem 1: %v", err)
+	}
+	item2, err := st.CreateItem(feed2.ID, "g2", "Item 2", "https://example.com/2", "c", 200)
+	if err != nil {
+		t.Fatalf("CreateItem 2: %v", err)
+	}
+	item3, err := st.CreateItem(feed3.ID, "g3", "Item 3", "https://example.com/3", "c", 300)
+	if err != nil {
+		t.Fatalf("CreateItem 3: %v", err)
+	}
+
+	r := newTestRouter()
+	r.PATCH("/api/items/-/read-all", h.markAllItemsRead)
+
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+
+	assertUnread := func(t *testing.T, id int64, want bool) {
+		t.Helper()
+		item, err := st.GetItem(id)
+		if err != nil {
+			t.Fatalf("GetItem(%d): %v", id, err)
+		}
+		if item.Unread != want {
+			t.Fatalf("item %d unread = %v, want %v", id, item.Unread, want)
+		}
+	}
+
+	t.Run("validation errors", func(t *testing.T) {
+		cases := []struct {
+			name string
+			body string
+		}{
+			{name: "empty request body", body: ""},
+			{name: "malformed json", body: "{"},
+			{name: "both feed_id and group_id", body: `{"feed_id":1,"group_id":1}`},
+			{name: "zero feed_id", body: `{"feed_id":0}`},
+			{name: "negative feed_id", body: `{"feed_id":-5}`},
+			{name: "zero group_id", body: `{"group_id":0}`},
+			{name: "negative group_id", body: `{"group_id":-1}`},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				var bodyReader = strings.NewReader(tc.body)
+				w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", bodyReader, jsonHeaders)
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("expected status 400, got %d (%s)", w.Code, w.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("feed scope", func(t *testing.T) {
+		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{"feed_id": feed1.ID}), jsonHeaders)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		}
+		assertUnread(t, item1.ID, false)
+		assertUnread(t, item2.ID, true)
+		assertUnread(t, item3.ID, true)
+	})
+
+	t.Run("group scope", func(t *testing.T) {
+		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{"group_id": group1.ID}), jsonHeaders)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		}
+		assertUnread(t, item1.ID, false)
+		assertUnread(t, item2.ID, false)
+		assertUnread(t, item3.ID, true)
+	})
+
+	t.Run("non-existent scopes are idempotent 204", func(t *testing.T) {
+		for _, payload := range []map[string]any{{"feed_id": 999999}, {"group_id": 999999}} {
+			w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, payload), jsonHeaders)
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+			}
+		}
+		assertUnread(t, item3.ID, true)
+	})
+
+	t.Run("global scope", func(t *testing.T) {
+		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{}), jsonHeaders)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		}
+		assertUnread(t, item1.ID, false)
+		assertUnread(t, item2.ID, false)
+		assertUnread(t, item3.ID, false)
+	})
 }

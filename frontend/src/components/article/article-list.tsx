@@ -1,8 +1,22 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCheck, Loader2 } from "lucide-react";
+import { CheckCheck, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArticleItem } from "./article-item";
@@ -11,7 +25,12 @@ import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
 import { useArticleNavigation } from "@/hooks/use-keyboard";
 import { useUrlState, type ArticleFilter } from "@/hooks/use-url-state";
 import { useArticleList } from "@/hooks/use-article-list";
-import { useMarkItemsRead, useMarkItemsUnread } from "@/queries/items";
+import {
+  buildMarkAllItemsReadPayload,
+  useMarkAllItemsRead,
+  useMarkItemsRead,
+  useMarkItemsUnread,
+} from "@/queries/items";
 import { useFeedLookup } from "@/queries/feeds";
 import { useGroups } from "@/queries/groups";
 import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
@@ -64,8 +83,10 @@ export function ArticleList() {
   } = useFeedLookup();
   const markItemsRead = useMarkItemsRead();
   const markItemsUnread = useMarkItemsUnread();
+  const markAllItemsRead = useMarkAllItemsRead();
   const createBookmark = useCreateBookmark();
   const deleteBookmark = useDeleteBookmark();
+  const [markAllConfirmOpen, setMarkAllConfirmOpen] = useState(false);
 
   const { pinRead, unpinRead } = useReadStatePins({
     feedId: selectedFeedId,
@@ -119,15 +140,23 @@ export function ArticleList() {
   ]);
 
   let title = t("article.list.all");
-  if (selectedFeedId) {
+  let scopeUnreadCount = feeds.reduce((sum, f) => sum + f.unread_count, 0);
+  if (selectedFeedId !== null) {
     const feed = getFeedById(selectedFeedId);
     title = feed?.name ?? t("article.feedFallback");
-  } else if (selectedGroupId) {
+    scopeUnreadCount = feed?.unread_count ?? 0;
+  } else if (selectedGroupId !== null) {
     const group = groups.find((g) => g.id === selectedGroupId);
     title = group?.name ?? t("article.groupFallback");
+    scopeUnreadCount = feeds.reduce(
+      (sum, f) => (f.group_id === selectedGroupId ? sum + f.unread_count : sum),
+      0,
+    );
   }
 
   const unreadCount = articles.filter((a) => a.unread).length;
+  const isMarkingRead = markItemsRead.isPending || markAllItemsRead.isPending;
+  const canMarkAllRead = scopeUnreadCount > 0 || unreadCount > 0;
   const hasArticleError = isError || isFetchNextPageError;
   const hasNoFeeds = !isFeedsLoading && !isFeedsError && feeds.length === 0;
 
@@ -178,18 +207,35 @@ export function ArticleList() {
     [createBookmark, deleteBookmark, getBookmarkByItemId, t],
   );
 
-  const handleMarkAllAsRead = async () => {
+  const handleMarkLoadedAsRead = async () => {
     const unreadIds = articles
       .filter((a) => a.unread && a.id > 0)
       .map((a) => a.id);
 
     if (unreadIds.length === 0) return;
 
+    // Pin before the request so optimistic updates do not temporarily empty
+    // the list and trigger shouldAutoFetchEmptyPage before pins land.
+    pinRead(unreadIds);
     try {
       await markItemsRead.mutateAsync(unreadIds);
-      pinRead(unreadIds);
+    } catch (error) {
+      unpinRead(unreadIds);
+      console.error("Failed to mark loaded items as read:", error);
+      toast.error(t("article.toast.markLoadedReadFailed"));
+    }
+  };
+
+  const handleConfirmMarkAllAsRead = async () => {
+    try {
+      await markAllItemsRead.mutateAsync(
+        buildMarkAllItemsReadPayload(selectedFeedId, selectedGroupId),
+      );
+      clearPins(pinsKey);
+      setMarkAllConfirmOpen(false);
     } catch (error) {
       console.error("Failed to mark all as read:", error);
+      toast.error(t("article.toast.markAllReadFailed"));
     }
   };
 
@@ -200,16 +246,42 @@ export function ArticleList() {
           <SidebarTrigger />
           <h2 className="truncate text-lg font-semibold">{title}</h2>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleMarkAllAsRead}
-          disabled={unreadCount === 0}
-          className="gap-1.5 text-xs"
-        >
-          <CheckCheck className="h-4 w-4" />
-          {t("article.list.markAllRead")}
-        </Button>
+        <div className="flex shrink-0 items-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMarkAllConfirmOpen(true)}
+            disabled={!canMarkAllRead || isMarkingRead}
+            className="gap-1.5 rounded-r-none text-xs focus-visible:z-10"
+          >
+            <CheckCheck className="h-4 w-4" />
+            {t("article.list.markAllRead")}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={unreadCount === 0 || isMarkingRead}
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("article.list.moreReadActions")}
+                  className="-ml-px rounded-l-none px-1.5 focus-visible:z-10"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-auto">
+              <DropdownMenuItem
+                disabled={unreadCount === 0 || isMarkingRead}
+                onClick={handleMarkLoadedAsRead}
+              >
+                <CheckCheck className="h-4 w-4" />
+                {t("article.list.markLoadedRead")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </ContentHeader>
 
       {/* Article area with filter tabs */}
@@ -338,6 +410,44 @@ export function ArticleList() {
           </div>
         </ScrollArea>
       </div>
+
+      <Dialog
+        open={markAllConfirmOpen}
+        onOpenChange={(open) => {
+          if (!markAllItemsRead.isPending) {
+            setMarkAllConfirmOpen(open);
+          }
+        }}
+      >
+        <DialogContent
+          data-hotkey-ignore="true"
+          className="sm:max-w-[425px]"
+        >
+          <DialogHeader>
+            <DialogTitle>{t("article.list.markAllDialog.title")}</DialogTitle>
+            <DialogDescription>
+              {t("article.list.markAllDialog.description", { scope: title })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={markAllItemsRead.isPending}
+              onClick={() => setMarkAllConfirmOpen(false)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={markAllItemsRead.isPending}
+              onClick={handleConfirmMarkAllAsRead}
+            >
+              {markAllItemsRead.isPending
+                ? t("article.list.markAllDialog.confirming")
+                : t("article.list.markAllRead")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

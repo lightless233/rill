@@ -79,6 +79,8 @@ Three cases return the status with an empty body instead: unknown routes
   makes the server ignore all other fields.
 - `PATCH /api/items/-/read` and `-/unread` accept 1–1000 ids
   (`maxBatchUpdateIDs`).
+- `PATCH /api/items/-/read-all` marks all unread items as read, optionally scoped
+  by mutually exclusive `feed_id` or `group_id` (passing both returns `400`).
 - `refresh_interval_seconds` (create and update feed): on **create**, absent
   or `0` means "use the global interval" (stored as `NULL`, never as `0`);
   on **update**, absent or `null` leaves the stored value unchanged and `0`

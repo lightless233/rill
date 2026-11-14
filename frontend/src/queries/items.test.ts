@@ -4,6 +4,8 @@ import type { Bookmark, Feed, Item } from "@/lib/api";
 import { updateItemsBookmarkCache, type BookmarksInfiniteData } from "./bookmarks";
 import {
   beginItemsReadStateOptimisticUpdate,
+  buildMarkAllItemsReadPayload,
+  invalidateAfterMarkAllRead,
   rollbackItemsReadStateMutation,
   type ItemsInfiniteData,
 } from "./items";
@@ -161,5 +163,53 @@ describe("items read-state rollback", () => {
 
     rollbackItemsReadStateMutation(qc, ctx);
     expect(qc.getQueryData<Feed[]>(queryKeys.feeds.list())?.[0].unread_count).toBe(2);
+  });
+});
+
+describe("mark all items read helpers", () => {
+  it("skips a stale rollback that started before a successful mark-all", async () => {
+    const qc = new QueryClient();
+    const listKey = [...queryKeys.items.lists(), { unread: true }, 20];
+    qc.setQueryData<ItemsInfiniteData>(listKey, {
+      pages: [{ data: [makeItem(1, { unread: true })], total: 1, next_cursor: null }],
+      pageParams: [null],
+    });
+    qc.setQueryData(queryKeys.feeds.list(), [makeFeed(1, 1)]);
+
+    const ctx = beginItemsReadStateOptimisticUpdate(qc, [1], false);
+    await invalidateAfterMarkAllRead(qc);
+    // Server-wide read state is now authoritative; simulate its refetched data.
+    qc.setQueryData(queryKeys.feeds.list(), [makeFeed(1, 0)]);
+
+    rollbackItemsReadStateMutation(qc, ctx);
+
+    expect(qc.getQueryData<ItemsInfiniteData>(listKey)?.pages[0].data[0].unread).toBe(false);
+    expect(qc.getQueryData<Feed[]>(queryKeys.feeds.list())?.[0].unread_count).toBe(0);
+  });
+
+  it("builds mutually exclusive scope payloads", () => {
+    expect(buildMarkAllItemsReadPayload(12, 3)).toEqual({ feed_id: 12 });
+    expect(buildMarkAllItemsReadPayload(null, 3)).toEqual({ group_id: 3 });
+    expect(buildMarkAllItemsReadPayload(null, null)).toEqual({});
+  });
+
+  it("invalidates items, feeds, and bookmark lists after mark-all-read", async () => {
+    const qc = new QueryClient();
+    const listKey = [...queryKeys.items.lists(), { unread: true }, 20];
+    const detailKey = queryKeys.items.detail(1);
+    const feedsKey = queryKeys.feeds.list();
+    const bookmarksKey = [...queryKeys.bookmarks.lists(), {}, 20];
+
+    qc.setQueryData(listKey, { pages: [], pageParams: [] });
+    qc.setQueryData(detailKey, makeItem(1));
+    qc.setQueryData(feedsKey, [makeFeed(1, 5)]);
+    qc.setQueryData(bookmarksKey, { pages: [], pageParams: [] });
+
+    await invalidateAfterMarkAllRead(qc);
+
+    expect(qc.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(detailKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(feedsKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(bookmarksKey)?.isInvalidated).toBe(true);
   });
 });

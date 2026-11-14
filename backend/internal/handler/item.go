@@ -17,6 +17,11 @@ type markItemsReadRequest struct {
 	IDs []int64 `json:"ids" binding:"required"`
 }
 
+type markAllItemsReadRequest struct {
+	FeedID  *int64 `json:"feed_id"`
+	GroupID *int64 `json:"group_id"`
+}
+
 func (h *Handler) listItems(c *gin.Context) {
 	params := store.ListItemsParams{}
 
@@ -139,6 +144,40 @@ func (h *Handler) markItemsRead(c *gin.Context) {
 	if err := h.store.BatchUpdateItemsUnread(req.IDs, false); err != nil {
 		internalError(c, err, "mark items as read")
 		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) markAllItemsRead(c *gin.Context) {
+	var req markAllItemsReadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequestError(c, "invalid request")
+		return
+	}
+	if req.FeedID != nil && req.GroupID != nil {
+		badRequestError(c, "cannot specify both feed_id and group_id")
+		return
+	}
+	if req.FeedID != nil && *req.FeedID <= 0 {
+		badRequestError(c, "invalid feed_id")
+		return
+	}
+	if req.GroupID != nil && *req.GroupID <= 0 {
+		badRequestError(c, "invalid group_id")
+		return
+	}
+
+	if req.GroupID != nil {
+		if err := h.store.MarkGroupAsRead(*req.GroupID); err != nil {
+			internalError(c, err, "mark group items as read")
+			return
+		}
+	} else {
+		if err := h.store.MarkAllAsRead(req.FeedID); err != nil {
+			internalError(c, err, "mark all items as read")
+			return
+		}
 	}
 
 	c.Status(http.StatusNoContent)

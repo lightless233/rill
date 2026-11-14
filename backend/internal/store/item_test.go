@@ -470,6 +470,40 @@ func TestMarkAllAsRead(t *testing.T) {
 			t.Error("expected all items to be read")
 		}
 	})
+
+	group2 := mustCreateGroup(t, store, "Test Group 2")
+	feed3 := mustCreateFeed(t, store, group2.ID, "Feed 3", "https://example.com/feed3", "https://example.com", "")
+	if err := store.UpdateItemUnread(item1.ID, true); err != nil {
+		t.Fatalf("UpdateItemUnread item1 failed: %v", err)
+	}
+	if err := store.UpdateItemUnread(item3.ID, true); err != nil {
+		t.Fatalf("UpdateItemUnread item3 failed: %v", err)
+	}
+	item4 := mustCreateItem(t, store, feed3.ID, "guid-4", "Item 4", "https://example.com/4", "Content 4", 400)
+
+	t.Run("mark all items in a specific group", func(t *testing.T) {
+		if err := store.MarkGroupAsRead(group.ID); err != nil {
+			t.Fatalf("MarkGroupAsRead() failed: %v", err)
+		}
+
+		for _, id := range []int64{item1.ID, item3.ID} {
+			updated, err := store.GetItem(id)
+			if err != nil {
+				t.Fatalf("GetItem(%d) failed: %v", id, err)
+			}
+			if updated.Unread {
+				t.Errorf("expected group1 item %d to be read", id)
+			}
+		}
+
+		updated4, err := store.GetItem(item4.ID)
+		if err != nil {
+			t.Fatalf("GetItem(item4) failed: %v", err)
+		}
+		if !updated4.Unread {
+			t.Error("expected group2 item4 to remain unread")
+		}
+	})
 }
 
 func TestItemExists(t *testing.T) {
