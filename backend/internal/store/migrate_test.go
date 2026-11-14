@@ -263,6 +263,116 @@ func TestMigrateLegacySchemaDespiteExistingMigrationRecord(t *testing.T) {
 	}
 }
 
+func TestMigrateUpgradeFrom006NarrowsFTSUpdateTrigger(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "upgrade_006.db")
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+		);
+	`); err != nil {
+		_ = db.Close()
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+
+	for v := 1; v <= 6; v++ {
+		entries, err := migrationFiles.ReadDir("migrations")
+		if err != nil {
+			_ = db.Close()
+			t.Fatalf("read migrations dir: %v", err)
+		}
+		var filename string
+		for _, entry := range entries {
+			ver, err := extractVersion(entry.Name())
+			if err == nil && ver == v {
+				filename = entry.Name()
+				break
+			}
+		}
+		if filename == "" {
+			_ = db.Close()
+			t.Fatalf("missing migration %d", v)
+		}
+		sqlBytes, err := migrationFiles.ReadFile("migrations/" + filename)
+		if err != nil {
+			_ = db.Close()
+			t.Fatalf("read migration %s: %v", filename, err)
+		}
+		if _, err := db.Exec(string(sqlBytes)); err != nil {
+			_ = db.Close()
+			t.Fatalf("exec migration %s: %v", filename, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (:v)`, sql.Named("v", v)); err != nil {
+			_ = db.Close()
+			t.Fatalf("record migration %d: %v", v, err)
+		}
+	}
+
+	// Seed feed + item before upgrading to 007.
+	if _, err := db.Exec(`INSERT INTO feeds (id, group_id, name, link) VALUES (1, 1, 'Feed', 'https://example.com/rss')`); err != nil {
+		_ = db.Close()
+		t.Fatalf("seed feed: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO items (id, feed_id, guid, title, content, unread) VALUES (1, 1, 'g1', 'Initial', 'alpha content', 1)`); err != nil {
+		_ = db.Close()
+		t.Fatalf("seed item: %v", err)
+	}
+
+	// Confirm the 006 trigger did NOT restrict columns before migration 007.
+	var triggerSQLBefore string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'items_fts_items_au'`).Scan(&triggerSQLBefore); err != nil {
+		_ = db.Close()
+		t.Fatalf("query trigger before upgrade: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close pre-upgrade db: %v", err)
+	}
+
+	upgraded, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() upgrade from 006 failed: %v", err)
+	}
+	defer closeStore(t, upgraded)
+
+	var v7Count int
+	if err := upgraded.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 7`).Scan(&v7Count); err != nil {
+		t.Fatalf("query version 7: %v", err)
+	}
+	if v7Count != 1 {
+		t.Fatalf("expected migration 7 recorded once, got %d", v7Count)
+	}
+
+	var triggerSQLAfter string
+	if err := upgraded.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'items_fts_items_au'`).Scan(&triggerSQLAfter); err != nil {
+		t.Fatalf("query trigger after upgrade: %v", err)
+	}
+	if triggerSQLBefore == triggerSQLAfter {
+		t.Fatal("expected migration 007 to replace items_fts_items_au trigger")
+	}
+
+	// Flipping read state on an upgraded DB must not touch items_fts segments.
+	var dataRowsBefore int
+	if err := upgraded.db.QueryRow(`SELECT COUNT(*) FROM items_fts_data`).Scan(&dataRowsBefore); err != nil {
+		t.Fatalf("count items_fts_data before unread flip: %v", err)
+	}
+	if err := upgraded.UpdateItemUnread(1, false); err != nil {
+		t.Fatalf("UpdateItemUnread() failed: %v", err)
+	}
+	var dataRowsAfter int
+	if err := upgraded.db.QueryRow(`SELECT COUNT(*) FROM items_fts_data`).Scan(&dataRowsAfter); err != nil {
+		t.Fatalf("count items_fts_data after unread flip: %v", err)
+	}
+	if dataRowsAfter != dataRowsBefore {
+		t.Fatalf("expected read-state update after 007 upgrade to perform zero FTS writes (items_fts_data rows %d -> %d)", dataRowsBefore, dataRowsAfter)
+	}
+}
+
 func createLegacyDBFixture(t *testing.T, dbPath string) {
 	t.Helper()
 

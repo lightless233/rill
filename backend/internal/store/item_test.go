@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -567,5 +568,89 @@ func TestSearchItemsFTSReflectsUpdateAndDelete(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for beta after delete, got %d", len(results))
+	}
+}
+
+func TestFTSUpdateTriggerSkipsUnreadAndNoopContentWrites(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	group := mustCreateGroup(t, store, "FTS Trigger Group")
+	feed := mustCreateFeed(t, store, group.ID, "FTS Feed", "https://example.com/trigger.xml", "https://example.com", "")
+	item := mustCreateItem(t, store, feed.ID, "t-1", "Original Title", "https://example.com/t1", "alpha token", 100)
+
+	countFTSData := func(t *testing.T) int {
+		t.Helper()
+		var n int
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM items_fts_data`).Scan(&n); err != nil {
+			t.Fatalf("count items_fts_data: %v", err)
+		}
+		return n
+	}
+
+	// Pin a single SQLite connection so total_changes() reflects writes on that connection accurately.
+	conn, err := store.db.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("acquire sqlite conn: %v", err)
+	}
+	defer conn.Close()
+
+	beforeData := countFTSData(t)
+	var beforeChanges, afterChanges int
+	if err := conn.QueryRowContext(context.Background(), `SELECT total_changes()`).Scan(&beforeChanges); err != nil {
+		t.Fatalf("read total_changes before unread update: %v", err)
+	}
+
+	// Read-state updates through store method and raw SQL must perform zero FTS writes.
+	if err := store.UpdateItemUnread(item.ID, false); err != nil {
+		t.Fatalf("UpdateItemUnread failed: %v", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), `UPDATE items SET unread = 1 WHERE id = :id`, sql.Named("id", item.ID)); err != nil {
+		t.Fatalf("raw unread update failed: %v", err)
+	}
+	// Identical title/content update must also skip FTS delete+insert.
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`UPDATE items SET title = :title, content = :content WHERE id = :id`,
+		sql.Named("title", "Original Title"),
+		sql.Named("content", "alpha token"),
+		sql.Named("id", item.ID),
+	); err != nil {
+		t.Fatalf("noop title/content update failed: %v", err)
+	}
+	if err := conn.QueryRowContext(context.Background(), `SELECT total_changes()`).Scan(&afterChanges); err != nil {
+		t.Fatalf("read total_changes after no-op updates: %v", err)
+	}
+	afterData := countFTSData(t)
+	if afterData != beforeData {
+		t.Fatalf("expected items_fts_data unchanged on unread/noop updates (%d -> %d)", beforeData, afterData)
+	}
+	// Only the two raw conn UPDATEs (unread=1 and identical title/content) should count on conn;
+	// if the FTS trigger fired on either, FTS shadow writes would push delta > 2.
+	if delta := afterChanges - beforeChanges; delta != 2 {
+		t.Fatalf("expected total_changes delta = 2 (no FTS trigger writes), got %d", delta)
+	}
+
+	// Null -> non-null title change (and NULL <-> NULL no-op) must be handled null-safely.
+	if _, err := conn.ExecContext(context.Background(), `UPDATE items SET title = NULL WHERE id = :id`, sql.Named("id", item.ID)); err != nil {
+		t.Fatalf("set title NULL failed: %v", err)
+	}
+	beforeNullNoop := countFTSData(t)
+	if _, err := conn.ExecContext(context.Background(), `UPDATE items SET title = NULL WHERE id = :id`, sql.Named("id", item.ID)); err != nil {
+		t.Fatalf("noop NULL title update failed: %v", err)
+	}
+	if afterNullNoop := countFTSData(t); afterNullNoop != beforeNullNoop {
+		t.Fatalf("expected NULL -> NULL title update to perform zero FTS writes (%d -> %d)", beforeNullNoop, afterNullNoop)
+	}
+
+	if _, err := conn.ExecContext(context.Background(), `UPDATE items SET title = 'UpdatedHeading' WHERE id = :id`, sql.Named("id", item.ID)); err != nil {
+		t.Fatalf("NULL -> non-NULL title update failed: %v", err)
+	}
+	results, err := store.SearchItems("UpdatedHeading", 10)
+	if err != nil {
+		t.Fatalf("SearchItems after title change failed: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != item.ID {
+		t.Fatalf("expected updated title to be indexed in FTS, got %+v", results)
 	}
 }
