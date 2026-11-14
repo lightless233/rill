@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { AlertCircle, ChevronDown, Save, Trash2, X } from "lucide-react";
 import {
   Dialog,
@@ -32,7 +32,7 @@ import { useUIStore } from "@/store";
 import { useGroups } from "@/queries/groups";
 import { useUpdateFeed, useDeleteFeed } from "@/queries/feeds";
 import { useAppInfo } from "@/queries/app";
-import type { UpdateFeedRequest } from "@/lib/api";
+import type { Feed, UpdateFeedRequest } from "@/lib/api";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -45,19 +45,56 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export function EditFeedDialog() {
-  const { t } = useI18n();
   const { isEditFeedOpen, editingFeed, setEditFeedOpen } = useUIStore();
+
+  if (!editingFeed) {
+    return null;
+  }
+
+  return (
+    <EditFeedDialogForm
+      key={`${editingFeed.id}:${editingFeed.updated_at}`}
+      open={isEditFeedOpen}
+      editingFeed={editingFeed}
+      onOpenChange={(open) => setEditFeedOpen(open)}
+      onClose={() => setEditFeedOpen(false)}
+    />
+  );
+}
+
+interface EditFeedDialogFormProps {
+  open: boolean;
+  editingFeed: Feed;
+  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
+}
+
+function EditFeedDialogForm({
+  open,
+  editingFeed,
+  onOpenChange,
+  onClose,
+}: EditFeedDialogFormProps) {
+  const { t } = useI18n();
   const { data: groups = [] } = useGroups();
   const updateFeedMutation = useUpdateFeed();
   const deleteFeedMutation = useDeleteFeed();
 
-  const [url, setUrl] = useState("");
-  const [name, setName] = useState("");
-  const [groupId, setGroupId] = useState<string>("");
-  const [proxy, setProxy] = useState("");
-  const [suspended, setSuspended] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState<string>("");
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  // NULL (or a legacy 0) stays "untouched" (empty): the Select shows the
+  // live global fallback, and an untouched save sends nothing.
+  const storedInterval = editingFeed.refresh_interval_seconds;
+
+  const [url, setUrl] = useState(editingFeed.link);
+  const [name, setName] = useState(editingFeed.name);
+  const [groupId, setGroupId] = useState<string>(editingFeed.group_id.toString());
+  const [proxy, setProxy] = useState(editingFeed.proxy ?? "");
+  const [suspended, setSuspended] = useState(editingFeed.suspended);
+  const [refreshInterval, setRefreshInterval] = useState<string>(
+    storedInterval && storedInterval > 0 ? storedInterval.toString() : "",
+  );
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(
+    !!editingFeed.proxy || storedInterval != null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -77,37 +114,8 @@ export function EditFeedDialog() {
     appInfo?.allowed_refresh_intervals ?? FALLBACK_REFRESH_INTERVALS,
   );
 
-  useEffect(() => {
-    if (editingFeed) {
-      setUrl(editingFeed.link);
-      setName(editingFeed.name);
-      setGroupId(editingFeed.group_id.toString());
-      setProxy(editingFeed.proxy ?? "");
-      setSuspended(editingFeed.suspended);
-      // NULL (or a legacy 0) stays "untouched" (empty): the Select shows the
-      // live global fallback, and an untouched save sends nothing.
-      const stored = editingFeed.refresh_interval_seconds;
-      setRefreshInterval(stored && stored > 0 ? stored.toString() : "");
-      setIsAdvancedOpen(!!editingFeed.proxy || stored != null);
-      setIsMobileErrorTooltipOpen(false);
-    }
-  }, [editingFeed]);
-
-  const resetForm = () => {
-    setUrl("");
-    setName("");
-    setGroupId("");
-    setProxy("");
-    setSuspended(false);
-    setRefreshInterval("");
-    setIsAdvancedOpen(false);
-    setIsDeleteOpen(false);
-  };
-
   const handleClose = () => {
-    setEditFeedOpen(false);
-    resetForm();
-    setIsMobileErrorTooltipOpen(false);
+    onClose();
   };
 
   const handleSubmit = async () => {
@@ -193,8 +201,8 @@ export function EditFeedDialog() {
   return (
     <>
       <Dialog
-        open={isEditFeedOpen}
-        onOpenChange={(open) => setEditFeedOpen(open)}
+        open={open}
+        onOpenChange={onOpenChange}
       >
         <DialogContent
           className="flex w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"

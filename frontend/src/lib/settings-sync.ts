@@ -67,8 +67,12 @@ function dispatchRemoteTheme(theme: string) {
 }
 
 export function useRemoteThemeSync() {
-  const setThemeRef = useRef(useTheme().setTheme);
-  setThemeRef.current = useTheme().setTheme;
+  const { setTheme } = useTheme();
+  const setThemeRef = useRef(setTheme);
+
+  useEffect(() => {
+    setThemeRef.current = setTheme;
+  }, [setTheme]);
 
   useEffect(() => {
     if (pendingRemoteTheme !== null) {
