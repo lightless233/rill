@@ -54,6 +54,7 @@ type appInfoResponse struct {
 	PullInterval            int     `json:"pull_interval"`
 	AllowedRefreshIntervals []int64 `json:"allowed_refresh_intervals"`
 	RefreshAllRunning       bool    `json:"refresh_all_running"`
+	BookmarkCount           int     `json:"bookmark_count"`
 }
 
 type batchCreateFeedsRequest struct {
@@ -99,10 +100,17 @@ func normalizeCreateRefreshInterval(v *int64) (*int64, error) {
 }
 
 func (h *Handler) getAppInfo(c *gin.Context) {
+	bookmarkCount, err := h.store.CountBookmarks(store.ListBookmarksParams{})
+	if err != nil {
+		internalError(c, err, "count bookmarks")
+		return
+	}
+
 	dataResponse(c, appInfoResponse{
 		PullInterval:            h.config.PullInterval,
 		AllowedRefreshIntervals: allowedRefreshIntervals,
 		RefreshAllRunning:       h.isRefreshAllRunning(),
+		BookmarkCount:           bookmarkCount,
 	})
 }
 

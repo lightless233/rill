@@ -58,15 +58,16 @@ type FeedFetchState struct {
 
 // Item represents a feed item.
 type Item struct {
-	ID        int64  `json:"id"`
-	FeedID    int64  `json:"feed_id"`
-	GUID      string `json:"guid"`
-	Title     string `json:"title"`
-	Link      string `json:"link"`
-	Content   string `json:"content"`
-	PubDate   int64  `json:"pub_date"`
-	Unread    bool   `json:"unread"`
-	CreatedAt int64  `json:"created_at"`
+	ID         int64  `json:"id"`
+	FeedID     int64  `json:"feed_id"`
+	GUID       string `json:"guid"`
+	Title      string `json:"title"`
+	Link       string `json:"link"`
+	Content    string `json:"content"`
+	PubDate    int64  `json:"pub_date"`
+	Unread     bool   `json:"unread"`
+	CreatedAt  int64  `json:"created_at"`
+	BookmarkID *int64 `json:"bookmark_id"`
 }
 
 // Settings holds the user's synced preferences. A nil field means the user

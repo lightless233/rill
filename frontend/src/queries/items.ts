@@ -19,7 +19,7 @@ import { usePreferencesStore } from "@/store";
 import type { BookmarksInfiniteData } from "./bookmarks";
 
 type ItemListResponse = Awaited<ReturnType<typeof itemAPI.list>>;
-type ItemsInfiniteData = InfiniteData<ItemListResponse, string | null>;
+export type ItemsInfiniteData = InfiniteData<ItemListResponse, string | null>;
 type ItemsMutationContext = {
   prevItemLists: Array<[readonly unknown[], ItemsInfiniteData | undefined]>;
   prevItemDetails: Array<readonly [number, Item | undefined]>;

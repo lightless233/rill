@@ -102,3 +102,110 @@ func TestListBookmarksCursorInvalidBefore(t *testing.T) {
 		t.Fatalf("expected status 400 for malformed cursor, got %d", w.Code)
 	}
 }
+
+func TestGetAppInfoIncludesBookmarkCountAndItemBookmarkID(t *testing.T) {
+	h, st := newAnonTestHandler(t, &recordingPuller{})
+	defer st.Close()
+
+	r := h.SetupRouter()
+
+	readAppBookmarkCount := func() int {
+		t.Helper()
+		w := performRequest(r, http.MethodGet, "/api/app", nil, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /api/app status = %d, body = %s", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Data appInfoResponse `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode /api/app: %v", err)
+		}
+		return resp.Data.BookmarkCount
+	}
+
+	if got := readAppBookmarkCount(); got != 0 {
+		t.Fatalf("initial bookmark_count = %d, want 0", got)
+	}
+
+	group, err := st.CreateGroup("Test")
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	feed, err := st.CreateFeed(group.ID, "Feed", "https://example.com/rss", "https://example.com", "", nil)
+	if err != nil {
+		t.Fatalf("CreateFeed: %v", err)
+	}
+	item, err := st.CreateItem(feed.ID, "guid-1", "Item 1", "https://example.com/1", "content", 1000)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	// Verify item endpoints serialize explicit null before starring.
+	w := performRequest(r, http.MethodGet, fmt.Sprintf("/api/items/%d", item.ID), nil, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/items/%d status = %d", item.ID, w.Code)
+	}
+	var itemResp struct {
+		Data model.Item `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &itemResp); err != nil {
+		t.Fatalf("decode /api/items/:id: %v", err)
+	}
+	if itemResp.Data.BookmarkID != nil {
+		t.Fatalf("expected bookmark_id nil before starring, got %v", *itemResp.Data.BookmarkID)
+	}
+
+	// Create 105 bookmarks including one tied to the item to confirm count goes past 100.
+	firstBookmark, err := st.CreateBookmark(&item.ID, &feed.ID, item.Link, item.Title, item.Content, item.PubDate, feed.Name)
+	if err != nil {
+		t.Fatalf("CreateBookmark: %v", err)
+	}
+	for i := 1; i < 105; i++ {
+		if _, err := st.CreateBookmark(
+			nil,
+			&feed.ID,
+			fmt.Sprintf("https://example.com/extra-%d", i),
+			fmt.Sprintf("Extra %d", i),
+			"content",
+			int64(1000+i),
+			feed.Name,
+		); err != nil {
+			t.Fatalf("CreateBookmark(%d): %v", i, err)
+		}
+	}
+
+	if got := readAppBookmarkCount(); got != 105 {
+		t.Fatalf("bookmark_count = %d, want 105", got)
+	}
+
+	w = performRequest(r, http.MethodGet, "/api/items", nil, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/items status = %d", w.Code)
+	}
+	var listResp struct {
+		Data []model.Item `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode /api/items: %v", err)
+	}
+	if len(listResp.Data) != 1 || listResp.Data[0].BookmarkID == nil || *listResp.Data[0].BookmarkID != firstBookmark.ID {
+		t.Fatalf("expected item bookmark_id = %d in /api/items, got %+v", firstBookmark.ID, listResp.Data)
+	}
+
+	if err := st.DeleteBookmark(firstBookmark.ID); err != nil {
+		t.Fatalf("DeleteBookmark: %v", err)
+	}
+	if got := readAppBookmarkCount(); got != 104 {
+		t.Fatalf("bookmark_count after delete = %d, want 104", got)
+	}
+
+	// Confirm CountBookmarks failures return 500 rather than fabricating 0.
+	if err := st.Close(); err != nil {
+		t.Fatalf("Close store: %v", err)
+	}
+	w = performRequest(r, http.MethodGet, "/api/app", nil, nil)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("GET /api/app with closed store = %d, want 500", w.Code)
+	}
+}

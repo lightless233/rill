@@ -28,7 +28,9 @@ type ListItemsParams struct {
 
 func (s *Store) ListItems(params ListItemsParams) ([]*model.Item, error) {
 	query := `
-		SELECT items.id, items.feed_id, items.guid, items.title, items.link, items.content, items.pub_date, items.unread, items.created_at
+		SELECT
+			items.id, items.feed_id, items.guid, items.title, items.link, items.content, items.pub_date, items.unread, items.created_at,
+			(SELECT id FROM bookmarks WHERE item_id = items.id ORDER BY id DESC LIMIT 1) AS bookmark_id
 		FROM items
 	`
 	args := []any{}
@@ -82,10 +84,15 @@ func (s *Store) ListItems(params ListItemsParams) ([]*model.Item, error) {
 	for rows.Next() {
 		i := &model.Item{}
 		var unread int
-		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt); err != nil {
+		var bookmarkID sql.NullInt64
+		if err := rows.Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt, &bookmarkID); err != nil {
 			return nil, err
 		}
 		i.Unread = intToBool(unread)
+		if bookmarkID.Valid {
+			id := bookmarkID.Int64
+			i.BookmarkID = &id
+		}
 		items = append(items, i)
 	}
 	return items, rows.Err()
@@ -94,11 +101,14 @@ func (s *Store) ListItems(params ListItemsParams) ([]*model.Item, error) {
 func (s *Store) GetItem(id int64) (*model.Item, error) {
 	i := &model.Item{}
 	var unread int
+	var bookmarkID sql.NullInt64
 	err := s.db.QueryRow(`
-		SELECT id, feed_id, guid, title, link, content, pub_date, unread, created_at
+		SELECT
+			id, feed_id, guid, title, link, content, pub_date, unread, created_at,
+			(SELECT id FROM bookmarks WHERE item_id = items.id ORDER BY id DESC LIMIT 1) AS bookmark_id
 		FROM items
 		WHERE id = :id
-	`, sql.Named("id", id)).Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt)
+	`, sql.Named("id", id)).Scan(&i.ID, &i.FeedID, &i.GUID, &i.Title, &i.Link, &i.Content, &i.PubDate, &unread, &i.CreatedAt, &bookmarkID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: item", ErrNotFound)
@@ -107,6 +117,10 @@ func (s *Store) GetItem(id int64) (*model.Item, error) {
 	}
 
 	i.Unread = intToBool(unread)
+	if bookmarkID.Valid {
+		id := bookmarkID.Int64
+		i.BookmarkID = &id
+	}
 	return i, nil
 }
 

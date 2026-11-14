@@ -373,6 +373,59 @@ func TestMigrateUpgradeFrom006NarrowsFTSUpdateTrigger(t *testing.T) {
 	}
 }
 
+func TestMigrate008AddsNonUniqueBookmarkItemIndex(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	var v8Count int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 8`).Scan(&v8Count); err != nil {
+		t.Fatalf("query version 8: %v", err)
+	}
+	if v8Count != 1 {
+		t.Fatalf("expected migration 8 recorded once, got %d", v8Count)
+	}
+
+	rows, err := store.db.Query(`PRAGMA index_list('bookmarks')`)
+	if err != nil {
+		t.Fatalf("PRAGMA index_list('bookmarks'): %v", err)
+	}
+	defer rows.Close()
+
+	var found bool
+	for rows.Next() {
+		var seq, unique int
+		var name, origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			t.Fatalf("scan index_list: %v", err)
+		}
+		if name == "idx_bookmarks_item_id" {
+			found = true
+			if unique != 0 {
+				t.Fatalf("expected idx_bookmarks_item_id to be non-unique, got unique=%d", unique)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate index_list: %v", err)
+	}
+	if !found {
+		t.Fatal("expected idx_bookmarks_item_id on bookmarks table")
+	}
+
+	// Verify duplicate item_id rows remain permitted for legacy compatibility.
+	feed := mustCreateFeed(t, store, 1, "Feed", "https://example.com/rss", "https://example.com", "")
+	item := mustCreateItem(t, store, feed.ID, "g-dup", "Dup Item", "https://example.com/dup", "body", 100)
+	if _, err := store.db.Exec(`
+		INSERT INTO bookmarks (item_id, link, title, content, feed_name)
+		VALUES
+			(:item_id, 'https://example.com/dup-1', 'Dup 1', 'c1', 'Feed'),
+			(:item_id, 'https://example.com/dup-2', 'Dup 2', 'c2', 'Feed')
+	`, sql.Named("item_id", item.ID)); err != nil {
+		t.Fatalf("insert duplicate item_id bookmarks: %v", err)
+	}
+}
+
 func createLegacyDBFixture(t *testing.T, dbPath string) {
 	t.Helper()
 

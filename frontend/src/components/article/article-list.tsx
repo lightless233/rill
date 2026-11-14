@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckCheck, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,7 +47,6 @@ export function ArticleList() {
     isFetchNextPageError,
     retry,
     fetchNextPage,
-    isItemStarred,
     getBookmarkByItemId,
   } = useArticleList({
     feedId: selectedFeedId,
@@ -154,21 +154,28 @@ export function ArticleList() {
 
   const handleToggleStar = useCallback(
     async (article: Item) => {
-      try {
-        if (isItemStarred(article.id)) {
-          const bookmark = getBookmarkByItemId(article.id);
-          if (bookmark) {
-            await deleteBookmark.mutateAsync(bookmark.id);
-          }
-          return;
-        }
+      const bookmarkId =
+        article.bookmark_id ?? getBookmarkByItemId(article.id)?.id ?? null;
 
+      if (bookmarkId !== null) {
+        try {
+          await deleteBookmark.mutateAsync({
+            bookmarkId,
+            itemId: article.id,
+          });
+        } catch {
+          toast.error(t("article.toast.unstarFailed"));
+        }
+        return;
+      }
+
+      try {
         await createBookmark.mutateAsync(article);
-      } catch (error) {
-        console.error("Failed to toggle star:", error);
+      } catch {
+        toast.error(t("article.toast.starFailed"));
       }
     },
-    [createBookmark, deleteBookmark, getBookmarkByItemId, isItemStarred],
+    [createBookmark, deleteBookmark, getBookmarkByItemId, t],
   );
 
   const handleMarkAllAsRead = async () => {
@@ -289,7 +296,9 @@ export function ArticleList() {
                       onToggleRead={handleToggleRead}
                       onToggleStar={handleToggleStar}
                       canToggleRead={article.id > 0}
-                      isStarred={isItemStarred(article.id)}
+                      isStarred={
+                        article.bookmark_id !== null || bookmark !== undefined
+                      }
                       feedName={feed?.name ?? bookmark?.feed_name ?? t("common.unknown")}
                       feedFaviconUrl={
                         feed ? getFaviconUrl(feed.link, feed.site_url) : null

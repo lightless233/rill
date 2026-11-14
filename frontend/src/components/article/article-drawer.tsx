@@ -8,6 +8,7 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export function ArticleDrawer() {
   } = useUrlState();
   const { getFeedById } = useFeedLookup();
 
-  const { articles, isStarredMode, isItemStarred, getBookmarkByItemId } =
+  const { articles, isStarredMode, getBookmarkByItemId } =
     useArticleList({
       feedId: selectedFeedId,
       groupId: selectedGroupId,
@@ -94,7 +95,10 @@ export function ArticleDrawer() {
   const canToggleRead = readArticle !== null && readArticle.id > 0;
   const feed = article ? getFeedById(article.feed_id) : null;
   const bookmark = article ? getBookmarkByItemId(article.id) : null;
-  const starred = article ? isItemStarred(article.id) : false;
+  const activeBookmarkId = article
+    ? (article.bookmark_id ?? bookmark?.id ?? null)
+    : null;
+  const starred = activeBookmarkId !== null;
   const safeArticleLink = article ? toSafeExternalUrl(article.link) : null;
 
   const autoMarkRead = usePreferencesStore((s) => s.autoMarkRead);
@@ -143,17 +147,22 @@ export function ArticleDrawer() {
 
   const handleToggleStar = async () => {
     if (!article) return;
-    try {
-      if (starred) {
-        const bookmark = getBookmarkByItemId(article.id);
-        if (bookmark) {
-          await deleteBookmark.mutateAsync(bookmark.id);
-        }
-      } else {
-        await createBookmark.mutateAsync(article);
+    if (activeBookmarkId !== null) {
+      try {
+        await deleteBookmark.mutateAsync({
+          bookmarkId: activeBookmarkId,
+          itemId: article.id,
+        });
+      } catch {
+        toast.error(t("article.toast.unstarFailed"));
       }
-    } catch (error) {
-      console.error("Failed to toggle star:", error);
+      return;
+    }
+
+    try {
+      await createBookmark.mutateAsync(article);
+    } catch {
+      toast.error(t("article.toast.starFailed"));
     }
   };
 

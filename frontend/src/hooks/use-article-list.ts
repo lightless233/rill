@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 import { useItems } from "@/queries/items";
 import {
   resolveBookmarkItemId,
-  useBookmarkLookup,
   useStarredItems,
 } from "@/queries/bookmarks";
 import { useArticlePinsStore, articleListKey } from "@/store";
@@ -29,9 +28,6 @@ export function useArticleList(filters: ArticleListFilters) {
     },
     !isStarredMode,
   );
-
-  // Unfiltered lookup: powers star indicators in non-starred views.
-  const lookup = useBookmarkLookup();
 
   // Server-filtered, paginated starred list. Only fetched in starred mode.
   const starred = useStarredItems(
@@ -66,22 +62,16 @@ export function useArticleList(filters: ArticleListFilters) {
 
   const articles: Item[] = isStarredMode ? starred.items : visibleItems;
 
-  // Bookmark resolution for star state + un-starring. In starred mode every
-  // displayed article is itself a bookmark, so resolve from the starred data
-  // (which may exceed the lookup's first page). Otherwise use the lookup.
-  const bookmarkSource: Bookmark[] = isStarredMode
-    ? starred.bookmarks
-    : lookup.bookmarks;
+  // Bookmark metadata for orphaned starred items (e.g. feed_name snapshot).
+  // Non-starred items carry bookmark_id directly from GET /api/items, avoiding preloading.
   const bookmarkByItemId = useMemo(
     () =>
-      new Map(bookmarkSource.map((b) => [resolveBookmarkItemId(b), b])),
-    [bookmarkSource],
-  );
-
-  const isItemStarred = useCallback(
-    (itemId: number) =>
-      isStarredMode ? true : bookmarkByItemId.has(itemId),
-    [isStarredMode, bookmarkByItemId],
+      isStarredMode
+        ? new Map<number, Bookmark>(
+            starred.bookmarks.map((b) => [resolveBookmarkItemId(b), b]),
+          )
+        : new Map<number, Bookmark>(),
+    [isStarredMode, starred.bookmarks],
   );
 
   const getBookmarkByItemId = useCallback(
@@ -120,7 +110,6 @@ export function useArticleList(filters: ArticleListFilters) {
     fetchNextPage: isStarredMode
       ? starred.fetchNextPage
       : () => void itemsQuery.fetchNextPage(),
-    isItemStarred,
     getBookmarkByItemId,
   };
 }

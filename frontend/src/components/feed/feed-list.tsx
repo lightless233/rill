@@ -4,8 +4,8 @@ import { QueryErrorBanner } from "@/components/query-error";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { isArticleFilter } from "@/lib/article-filter";
 import { useGroups } from "@/queries/groups";
+import { useAppInfo } from "@/queries/app";
 import { useFeedLookup, useUnreadCounts } from "@/queries/feeds";
-import { useBookmarkLookup } from "@/queries/bookmarks";
 import { useUrlState } from "@/hooks/use-url-state";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,8 @@ export function FeedList() {
     refetch: refetchFeeds,
   } = useFeedLookup();
   const { getTotalUnreadCount } = useUnreadCounts();
-  const { total: starredTotal } = useBookmarkLookup();
+  const { data: appInfo } = useAppInfo();
+  const starredTotal = appInfo?.bookmark_count;
   const isLoading = isGroupsLoading || isFeedsLoading;
   const hasLoadError = isGroupsError || isFeedsError;
 

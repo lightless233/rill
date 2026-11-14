@@ -654,3 +654,91 @@ func TestFTSUpdateTriggerSkipsUnreadAndNoopContentWrites(t *testing.T) {
 		t.Fatalf("expected updated title to be indexed in FTS, got %+v", results)
 	}
 }
+
+func TestListItemsAndGetItemIncludeBookmarkID(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	group := mustCreateGroup(t, store, "Bookmark ID Group")
+	feed := mustCreateFeed(t, store, group.ID, "Feed", "https://example.com/rss", "https://example.com", "")
+	item1 := mustCreateItem(t, store, feed.ID, "g1", "Item 1", "https://example.com/1", "c1", 200)
+	item2 := mustCreateItem(t, store, feed.ID, "g2", "Item 2", "https://example.com/2", "c2", 100)
+
+	b1, err := store.CreateBookmark(&item1.ID, &feed.ID, item1.Link, item1.Title, item1.Content, item1.PubDate, feed.Name)
+	if err != nil {
+		t.Fatalf("CreateBookmark: %v", err)
+	}
+
+	got1, err := store.GetItem(item1.ID)
+	if err != nil {
+		t.Fatalf("GetItem(item1): %v", err)
+	}
+	if got1.BookmarkID == nil || *got1.BookmarkID != b1.ID {
+		t.Fatalf("GetItem(item1) BookmarkID = %v, want %d", got1.BookmarkID, b1.ID)
+	}
+
+	got2, err := store.GetItem(item2.ID)
+	if err != nil {
+		t.Fatalf("GetItem(item2): %v", err)
+	}
+	if got2.BookmarkID != nil {
+		t.Fatalf("GetItem(item2) BookmarkID = %v, want nil", got2.BookmarkID)
+	}
+
+	// Simulate legacy duplicate item_id rows; scalar subquery must pick latest ID without row duplication.
+	res, err := store.db.Exec(`
+		INSERT INTO bookmarks (item_id, feed_id, link, title, content, pub_date, feed_name)
+		VALUES (:item_id, :feed_id, 'https://example.com/1-legacy-dup', :title, :content, :pub_date, :feed_name)
+	`,
+		sql.Named("item_id", item1.ID),
+		sql.Named("feed_id", feed.ID),
+		sql.Named("title", item1.Title),
+		sql.Named("content", item1.Content),
+		sql.Named("pub_date", item1.PubDate),
+		sql.Named("feed_name", feed.Name),
+	)
+	if err != nil {
+		t.Fatalf("insert duplicate bookmark: %v", err)
+	}
+	dupID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId: %v", err)
+	}
+
+	items, err := store.ListItems(ListItemsParams{FeedID: &feed.ID})
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items without duplicate join rows, got %d", len(items))
+	}
+	if items[0].ID != item1.ID || items[0].BookmarkID == nil || *items[0].BookmarkID != dupID {
+		t.Fatalf("items[0] = (id=%d, bookmark_id=%v), want (id=%d, bookmark_id=%d)", items[0].ID, items[0].BookmarkID, item1.ID, dupID)
+	}
+	if items[1].ID != item2.ID || items[1].BookmarkID != nil {
+		t.Fatalf("items[1] = (id=%d, bookmark_id=%v), want (id=%d, bookmark_id=nil)", items[1].ID, items[1].BookmarkID, item2.ID)
+	}
+
+	got1AfterDup, err := store.GetItem(item1.ID)
+	if err != nil {
+		t.Fatalf("GetItem(item1) after dup: %v", err)
+	}
+	if got1AfterDup.BookmarkID == nil || *got1AfterDup.BookmarkID != dupID {
+		t.Fatalf("GetItem(item1) BookmarkID after dup = %v, want %d", got1AfterDup.BookmarkID, dupID)
+	}
+
+	if err := store.DeleteBookmark(dupID); err != nil {
+		t.Fatalf("DeleteBookmark(dup): %v", err)
+	}
+	if err := store.DeleteBookmark(b1.ID); err != nil {
+		t.Fatalf("DeleteBookmark(b1): %v", err)
+	}
+
+	got1Cleared, err := store.GetItem(item1.ID)
+	if err != nil {
+		t.Fatalf("GetItem(item1) after delete: %v", err)
+	}
+	if got1Cleared.BookmarkID != nil {
+		t.Fatalf("GetItem(item1) BookmarkID after delete = %v, want nil", got1Cleared.BookmarkID)
+	}
+}

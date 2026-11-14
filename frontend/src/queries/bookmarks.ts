@@ -1,12 +1,14 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
   type InfiniteData,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   bookmarkAPI,
+  type AppInfoResponse,
   type Bookmark,
   type Item,
   type PaginatedListResponse,
@@ -17,12 +19,8 @@ import {
   type BookmarkFilters,
   type NormalizedBookmarkFilters,
 } from "./keys";
+import type { ItemsInfiniteData } from "./items";
 import { usePreferencesStore } from "@/store";
-
-// The lookup query (star icons + sidebar count) fetches a large first page so
-// most users' bookmarks are covered in a single request. 100 is also the
-// backend per-request cap, so it is the natural chunk size.
-const BOOKMARK_LOOKUP_PAGE_SIZE = 100;
 
 type BookmarkListResponse = PaginatedListResponse<Bookmark>;
 export type BookmarksInfiniteData = InfiniteData<BookmarkListResponse, string | null>;
@@ -66,35 +64,48 @@ function useBookmarks(
   });
 }
 
-// useBookmarkLookup powers star indicators and the sidebar starred count.
-// It is intentionally unfiltered so star state is consistent across views;
-// the first page (up to BOOKMARK_LOOKUP_PAGE_SIZE) covers the common case and
-// `total` always reflects the true global count.
-export function useBookmarkLookup() {
-  const query = useBookmarks({}, BOOKMARK_LOOKUP_PAGE_SIZE);
+export function updateItemsBookmarkCache(
+  qc: QueryClient,
+  params: {
+    itemId?: number | null;
+    matchBookmarkId?: number;
+    nextBookmarkId: number | null;
+  },
+) {
+  const { itemId, matchBookmarkId, nextBookmarkId } = params;
+  const matchesItem = (item: Item) =>
+    (itemId != null && itemId > 0 && item.id === itemId) ||
+    (matchBookmarkId != null && item.bookmark_id === matchBookmarkId);
 
-  const bookmarks = useMemo(
-    () => query.data?.pages.flatMap((p) => p.data) ?? [],
-    [query.data],
+  qc.setQueriesData<ItemsInfiniteData>(
+    { queryKey: queryKeys.items.lists() },
+    (old) => {
+      if (!old) return old;
+      let changed = false;
+      const pages = old.pages.map((page) => {
+        let pageChanged = false;
+        const data = page.data.map((item) => {
+          if (matchesItem(item) && item.bookmark_id !== nextBookmarkId) {
+            pageChanged = true;
+            return { ...item, bookmark_id: nextBookmarkId };
+          }
+          return item;
+        });
+        if (!pageChanged) return page;
+        changed = true;
+        return { ...page, data };
+      });
+      return changed ? { ...old, pages } : old;
+    },
   );
-  const total = query.data?.pages.at(-1)?.total ?? 0;
 
-  const byItemId = useMemo(
-    () => new Map(bookmarks.map((b) => [resolveBookmarkItemId(b), b])),
-    [bookmarks],
-  );
-
-  const isItemStarred = useCallback(
-    (itemId: number) => byItemId.has(itemId),
-    [byItemId],
-  );
-
-  const getBookmarkByItemId = useCallback(
-    (itemId: number) => byItemId.get(itemId),
-    [byItemId],
-  );
-
-  return { bookmarks, total, isItemStarred, getBookmarkByItemId };
+  if (itemId != null && itemId > 0) {
+    qc.setQueryData<Item>(queryKeys.items.detail(itemId), (old) =>
+      old && old.bookmark_id !== nextBookmarkId
+        ? { ...old, bookmark_id: nextBookmarkId }
+        : old,
+    );
+  }
 }
 
 export interface StarredItemsResult {
@@ -137,6 +148,7 @@ export function useStarredItems(
         pub_date: bookmark.pub_date,
         unread: bookmark.unread,
         created_at: bookmark.created_at,
+        bookmark_id: bookmark.id,
       })),
     [bookmarks],
   );
@@ -169,11 +181,16 @@ export function useCreateBookmark() {
       const res = await bookmarkAPI.create({ item_id: item.id });
       return res.data!;
     },
-    onSuccess: (bookmark) => {
+    onSuccess: (bookmark, item) => {
       const itemId = resolveBookmarkItemId(bookmark);
-      // Optimistically insert/update across ALL bookmark list caches (including
-      // feed/group-filtered variants). This may add the bookmark to a filtered
-      // cache it doesn't belong in; onSettled below invalidates and reconciles.
+      const wasAlreadyStarred =
+        item.bookmark_id === bookmark.id || item.bookmark_id != null;
+
+      updateItemsBookmarkCache(qc, {
+        itemId: bookmark.item_id ?? item.id,
+        nextBookmarkId: bookmark.id,
+      });
+
       qc.setQueriesData<BookmarksInfiniteData>(
         { queryKey: queryKeys.bookmarks.lists() },
         (old) => {
@@ -199,24 +216,40 @@ export function useCreateBookmark() {
           return { ...old, pages };
         },
       );
-    },
-    onSettled: () => {
+
+      if (!wasAlreadyStarred) {
+        qc.setQueryData<AppInfoResponse>(queryKeys.app.info(), (old) =>
+          old ? { ...old, bookmark_count: old.bookmark_count + 1 } : old,
+        );
+      }
+
       qc.invalidateQueries({ queryKey: queryKeys.bookmarks.all });
+      qc.invalidateQueries({ queryKey: queryKeys.items.all });
+      qc.invalidateQueries({ queryKey: queryKeys.app.info() });
     },
   });
+}
+
+export interface DeleteBookmarkVariables {
+  bookmarkId: number;
+  itemId?: number | null;
 }
 
 export function useDeleteBookmark() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (bookmarkId: number) => {
+    mutationFn: async ({ bookmarkId }: DeleteBookmarkVariables) => {
       await bookmarkAPI.delete(bookmarkId);
       return bookmarkId;
     },
-    onSuccess: (bookmarkId) => {
-      // Optimistically remove from every bookmark list cache (filtered or not);
-      // onSettled below re-fetches to correct any cross-filter drift.
+    onSuccess: (bookmarkId, { itemId }) => {
+      updateItemsBookmarkCache(qc, {
+        itemId,
+        matchBookmarkId: bookmarkId,
+        nextBookmarkId: null,
+      });
+
       qc.setQueriesData<BookmarksInfiniteData>(
         { queryKey: queryKeys.bookmarks.lists() },
         (old) => {
@@ -233,9 +266,16 @@ export function useDeleteBookmark() {
           return { ...old, pages };
         },
       );
-    },
-    onSettled: () => {
+
+      qc.setQueryData<AppInfoResponse>(queryKeys.app.info(), (old) =>
+        old
+          ? { ...old, bookmark_count: Math.max(0, old.bookmark_count - 1) }
+          : old,
+      );
+
       qc.invalidateQueries({ queryKey: queryKeys.bookmarks.all });
+      qc.invalidateQueries({ queryKey: queryKeys.items.all });
+      qc.invalidateQueries({ queryKey: queryKeys.app.info() });
     },
   });
 }
