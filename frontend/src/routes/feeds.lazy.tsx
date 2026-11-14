@@ -186,10 +186,12 @@ function FeedsPage() {
       setAwaitingPostTriggerPoll(true);
       try {
         await queryClient.refetchQueries({ queryKey: queryKeys.app.info() });
+        const appInfoState = queryClient.getQueryState(queryKeys.app.info());
         const latestAppInfo = queryClient.getQueryData<AppInfoResponse>(
           queryKeys.app.info(),
         );
         if (
+          appInfoState?.status === "success" &&
           latestAppInfo &&
           !latestAppInfo.refresh_all_running &&
           !refreshSyncRef.current.wasRunning
@@ -205,6 +207,15 @@ function FeedsPage() {
       }
     } catch {
       toast.error(t("feeds.toast.refreshFailed"));
+    }
+  };
+
+  const handleRetryRefreshStatus = async () => {
+    const result = await appInfoQuery.refetch();
+    if (!result.isError && result.data?.refresh_all_running === false) {
+      refreshSyncRef.current = INITIAL_REFRESH_ALL_SYNC_STATE;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feeds.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.items.all });
     }
   };
 
@@ -284,7 +295,7 @@ function FeedsPage() {
   const isRefreshAllActive =
     refreshFeedsMutation.isPending ||
     awaitingPostTriggerPoll ||
-    Boolean(appInfoQuery.data?.refresh_all_running);
+    (!appInfoQuery.isError && Boolean(appInfoQuery.data?.refresh_all_running));
   const handleRetryLoad = () => {
     if (isGroupsError) void refetchGroups();
     if (isFeedsError) void refetchFeeds();
@@ -427,6 +438,14 @@ function FeedsPage() {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-2 p-4 sm:p-6">
+            {appInfoQuery.isError && (
+              <QueryErrorBanner
+                message={t("feeds.refreshStatusFailed")}
+                onRetry={() => {
+                  void handleRetryRefreshStatus();
+                }}
+              />
+            )}
             {hasLoadError && groups.length === 0 && feeds.length === 0 ? (
               <QueryErrorState
                 message={t("feeds.loadFailed")}

@@ -154,6 +154,7 @@ export const deMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Gruppe loschen",
   "feeds.empty": "Noch keine Feeds. Verwenden Sie oben Hinzufugen fur den ersten Feed.",
   "feeds.loadFailed": "Feeds oder Gruppen konnten nicht geladen werden",
+  "feeds.refreshStatusFailed": "Aktualisierungsstatus konnte nicht überprüft werden",
   "feeds.exportButton": "Exportieren",
   "feeds.header": "Feeds verwalten",
   "feeds.itemCount": "{count} Artikel",

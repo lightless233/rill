@@ -154,6 +154,7 @@ export const ruMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Удалить группу",
   "feeds.empty": "Лент пока нет. Используйте Добавить выше, чтобы создать первую ленту.",
   "feeds.loadFailed": "Не удалось загрузить ленты или группы",
+  "feeds.refreshStatusFailed": "Не удалось проверить статус обновления",
   "feeds.exportButton": "Экспорт",
   "feeds.header": "Управление лентами",
   "feeds.itemCount": "Статей: {count}",

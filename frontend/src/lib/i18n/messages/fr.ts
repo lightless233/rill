@@ -154,6 +154,7 @@ export const frMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Supprimer le groupe",
   "feeds.empty": "Aucun flux. Utilisez Ajouter ci-dessus pour créer votre premier flux.",
   "feeds.loadFailed": "Échec du chargement des flux ou groupes",
+  "feeds.refreshStatusFailed": "Échec de vérification du statut d'actualisation",
   "feeds.exportButton": "Exporter",
   "feeds.header": "Gérer les flux",
   "feeds.itemCount": "{count} articles",

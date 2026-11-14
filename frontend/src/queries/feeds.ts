@@ -4,6 +4,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import { feedAPI, type Feed } from "@/lib/api";
 import { queryKeys } from "./keys";
@@ -88,6 +89,18 @@ export function useUnreadCounts() {
   };
 }
 
+export function applyFeedCreatedCache(qc: QueryClient, feed: Feed) {
+  qc.setQueryData(queryKeys.feeds.list(), (old: Feed[] | undefined) =>
+    old
+      ? old.some((existing) => existing.id === feed.id)
+        ? old
+        : [...old, feed]
+      : [feed],
+  );
+  void qc.invalidateQueries({ queryKey: queryKeys.feeds.all });
+  void qc.invalidateQueries({ queryKey: queryKeys.items.all });
+}
+
 export function useCreateFeed() {
   const qc = useQueryClient();
   return useMutation({
@@ -96,9 +109,7 @@ export function useCreateFeed() {
       return res.data!;
     },
     onSuccess: (feed) => {
-      qc.setQueryData(queryKeys.feeds.list(), (old: Feed[] | undefined) =>
-        old ? [...old, feed] : [feed],
-      );
+      applyFeedCreatedCache(qc, feed);
     },
   });
 }

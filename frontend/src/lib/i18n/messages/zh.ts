@@ -154,6 +154,7 @@ export const zhMessages: PartialMessages = {
   "feeds.deleteGroup.title": "删除分组",
   "feeds.empty": "暂无订阅。请使用上方“添加”创建第一个订阅。",
   "feeds.loadFailed": "加载订阅源或分组失败",
+  "feeds.refreshStatusFailed": "检查刷新状态失败",
   "feeds.exportButton": "导出",
   "feeds.header": "管理订阅",
   "feeds.itemCount": "{count} 篇文章",

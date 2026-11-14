@@ -24,7 +24,6 @@ import (
 )
 
 const (
-	maxDiscoveryBodyBytes   = 5 << 20 // 5 MiB cap for HTML or feed bodies
 	maxDiscoveryHTMLProbes  = 16
 	discoveryProbeWorkers   = 4
 	discoveryRequestTimeout = 30 * time.Second
@@ -176,7 +175,7 @@ func fetchDiscoveryDocument(ctx context.Context, client *http.Client, rawURL str
 		return "", nil, &upstreamFetchError{statusCode: resp.StatusCode}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBodyBytes))
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", nil, &upstreamFetchError{err: err}
 	}

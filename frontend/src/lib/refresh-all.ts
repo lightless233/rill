@@ -42,7 +42,7 @@ export function reconcileRefreshAllState(
   prev: RefreshAllSyncState,
   snapshot: AppInfoSyncSnapshot,
 ): RefreshAllSyncResult {
-  if (snapshot.isError && !snapshot.isFetching) {
+  if (snapshot.isError) {
     return {
       next: INITIAL_REFRESH_ALL_SYNC_STATE,
       shouldInvalidate: false,

@@ -306,3 +306,28 @@ func TestValidateFeedProxyPolicyAndRedirectBlocking(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateFeedAllowsLargeValidFeed(t *testing.T) {
+	feedBody := `<?xml version="1.0"?><rss version="2.0"><channel><title>Large Valid Feed</title><link>https://example.com</link><item><title>Large Article</title><guid>large</guid><description>` +
+		strings.Repeat("a", (5<<20)+1024) +
+		`</description></item></channel></rss>`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/large.xml" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprint(w, feedBody)
+	}))
+	defer server.Close()
+
+	h := &Handler{config: &config.Config{AllowPrivateFeeds: true}}
+	code, result := postValidateFeed(t, h, server.URL+"/large.xml")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (error=%q)", code, result.Error)
+	}
+	if len(result.Data.Feeds) != 1 || result.Data.Feeds[0].Title != "Large Valid Feed" {
+		t.Fatalf("expected valid large feed to remain discoverable, got %+v", result.Data.Feeds)
+	}
+}

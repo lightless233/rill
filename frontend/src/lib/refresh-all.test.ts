@@ -94,9 +94,21 @@ describe("refresh-all sync state", () => {
   it("clears pending sync state if /api/app stops in an error state", () => {
     const state = markRefreshAllTriggered(100);
     const step = reconcileRefreshAllState(state, {
-      refreshAllRunning: undefined,
+      refreshAllRunning: true,
       dataUpdatedAt: 100,
       isFetching: false,
+      isError: true,
+    });
+    expect(step.isRefreshing).toBe(false);
+    expect(step.shouldInvalidate).toBe(false);
+    expect(step.next).toEqual(INITIAL_REFRESH_ALL_SYNC_STATE);
+  });
+
+  it("never reports cached refreshAllRunning=true as active while retrying an errored query", () => {
+    const step = reconcileRefreshAllState(INITIAL_REFRESH_ALL_SYNC_STATE, {
+      refreshAllRunning: true,
+      dataUpdatedAt: 200,
+      isFetching: true,
       isError: true,
     });
     expect(step.isRefreshing).toBe(false);

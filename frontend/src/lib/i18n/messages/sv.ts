@@ -154,6 +154,7 @@ export const svMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Radera grupp",
   "feeds.empty": "Inga floden an. Anvand Lagg till ovan for att skapa ditt forsta flode.",
   "feeds.loadFailed": "Kunde inte ladda flöden eller grupper",
+  "feeds.refreshStatusFailed": "Kunde inte kontrollera uppdateringsstatus",
   "feeds.exportButton": "Exportera",
   "feeds.header": "Hantera floden",
   "feeds.itemCount": "{count} artiklar",

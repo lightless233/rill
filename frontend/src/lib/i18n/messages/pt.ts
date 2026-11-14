@@ -154,6 +154,7 @@ export const ptMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Excluir grupo",
   "feeds.empty": "Ainda nao ha feeds. Use Adicionar acima para criar o primeiro.",
   "feeds.loadFailed": "Falha ao carregar feeds ou grupos",
+  "feeds.refreshStatusFailed": "Falha ao verificar o status de atualização",
   "feeds.exportButton": "Exportar",
   "feeds.header": "Gerenciar feeds",
   "feeds.itemCount": "{count} artigos",

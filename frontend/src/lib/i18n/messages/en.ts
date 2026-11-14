@@ -153,6 +153,7 @@ export const enMessages = {
   "feeds.deleteGroup.title": "Delete Group",
   "feeds.empty": "No feeds yet. Use Add above to create your first feed.",
   "feeds.loadFailed": "Failed to load feeds or groups",
+  "feeds.refreshStatusFailed": "Failed to check refresh status",
   "feeds.exportButton": "Export",
   "feeds.header": "Manage Feeds",
   "feeds.itemCount": "{count} articles",

@@ -154,6 +154,7 @@ export const esMessages: PartialMessages = {
   "feeds.deleteGroup.title": "Eliminar grupo",
   "feeds.empty": "Aun no hay feeds. Usa Agregar arriba para crear tu primer feed.",
   "feeds.loadFailed": "No se pudieron cargar los feeds o grupos",
+  "feeds.refreshStatusFailed": "No se pudo comprobar el estado de actualización",
   "feeds.exportButton": "Exportar",
   "feeds.header": "Gestionar feeds",
   "feeds.itemCount": "{count} articulos",
