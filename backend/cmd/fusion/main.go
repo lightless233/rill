@@ -41,7 +41,10 @@ func run() error {
 	}
 	defer st.Close()
 
-	puller := pull.New(st, cfg)
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	puller := pull.NewWithContext(sigCtx, st, cfg)
 	h, err := handler.New(st, cfg, puller)
 	if err != nil {
 		return err
@@ -57,9 +60,6 @@ func run() error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-
-	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	g, ctx := errgroup.WithContext(sigCtx)
 

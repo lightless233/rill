@@ -20,6 +20,7 @@ import (
 const minScheduleDelay = time.Second
 
 type Puller struct {
+	baseCtx     context.Context
 	store       *store.Store
 	config      *config.Config
 	logger      *slog.Logger
@@ -38,7 +39,17 @@ func (p *Puller) effectiveInterval(feed *model.Feed) time.Duration {
 }
 
 func New(st *store.Store, cfg *config.Config) *Puller {
+	return NewWithContext(context.Background(), st, cfg)
+}
+
+// NewWithContext creates a Puller bound to baseCtx so process shutdown stops
+// both periodic pulls and asynchronous manual/initial feed refreshes.
+func NewWithContext(baseCtx context.Context, st *store.Store, cfg *config.Config) *Puller {
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
 	return &Puller{
+		baseCtx:     baseCtx,
 		store:       st,
 		config:      cfg,
 		logger:      slog.Default(),
@@ -48,6 +59,33 @@ func New(st *store.Store, cfg *config.Config) *Puller {
 		concurrency: semaphore.NewWeighted(int64(cfg.PullConcurrency)),
 		wake:        make(chan struct{}, 1),
 	}
+}
+
+func (p *Puller) bindLifecycleContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if p.baseCtx == nil {
+		return context.WithCancel(ctx)
+	}
+
+	mergedCtx, cancel := context.WithCancel(ctx)
+	stopAfter := context.AfterFunc(p.baseCtx, cancel)
+	if p.baseCtx.Err() != nil {
+		cancel()
+	}
+
+	return mergedCtx, func() {
+		stopAfter()
+		cancel()
+	}
+}
+
+func (p *Puller) withAttemptTimeout(parentCtx context.Context) (context.Context, context.CancelFunc) {
+	if p.timeout > 0 {
+		return context.WithTimeout(parentCtx, p.timeout)
+	}
+	return context.WithCancel(parentCtx)
 }
 
 // Wake prompts the scheduler to re-evaluate due feeds immediately. HTTP
@@ -64,17 +102,20 @@ func (p *Puller) Wake() {
 // pulls the feeds that are due (per their next_check_at), then sleeps until
 // the earliest next due time, or until Wake fires.
 func (p *Puller) Start(ctx context.Context) error {
+	lifecycleCtx, stopLifecycle := p.bindLifecycleContext(ctx)
+	defer stopLifecycle()
+
 	p.logger.Info("pull service started", "interval", p.interval, "timeout", p.timeout, "concurrency", p.config.PullConcurrency)
 
 	for {
-		dispatched := p.pullDue(ctx)
+		dispatched := p.pullDue(lifecycleCtx)
 
 		timer := time.NewTimer(p.scheduleDelay(dispatched > 0))
 		select {
-		case <-ctx.Done():
+		case <-lifecycleCtx.Done():
 			timer.Stop()
 			p.logger.Info("pull service stopping")
-			return ctx.Err()
+			return lifecycleCtx.Err()
 		case <-timer.C:
 		case <-p.wake:
 			timer.Stop()
@@ -114,6 +155,12 @@ func (p *Puller) scheduleDelay(dispatched bool) time.Duration {
 // pullDue fetches the feeds whose next_check_at has passed, concurrently with
 // semaphore limiting. It returns how many feeds were dispatched.
 func (p *Puller) pullDue(ctx context.Context) int {
+	lifecycleCtx, stopLifecycle := p.bindLifecycleContext(ctx)
+	defer stopLifecycle()
+	if lifecycleCtx.Err() != nil {
+		return 0
+	}
+
 	now := time.Now().Unix()
 	feeds, err := p.store.ListDueFeeds(now)
 	if err != nil {
@@ -121,7 +168,7 @@ func (p *Puller) pullDue(ctx context.Context) int {
 		return 0
 	}
 
-	count, _ := p.dispatchFeeds(ctx, feeds, func(feed *model.Feed) bool {
+	count, _ := p.dispatchFeeds(lifecycleCtx, feeds, func(feed *model.Feed) bool {
 		state := pullpolicy.FeedRuntimeState{
 			Suspended:           feed.Suspended,
 			RetryAfterUntil:     feed.FetchState.RetryAfterUntil,
@@ -136,12 +183,27 @@ func (p *Puller) pullDue(ctx context.Context) int {
 }
 
 // pullFeed fetches single feed and saves new items.
-func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
+func (p *Puller) pullFeed(parentCtx context.Context, feed *model.Feed) {
+	if parentCtx.Err() != nil {
+		return
+	}
+
 	p.logger.Debug("pulling feed", "feed_id", feed.ID, "feed_name", feed.Name)
 
-	result, err := FetchAndParse(ctx, feed, p.timeout, p.config.AllowPrivateFeeds)
+	attemptCtx, cancelAttempt := p.withAttemptTimeout(parentCtx)
+	defer cancelAttempt()
+
+	result, err := FetchAndParse(attemptCtx, feed, p.timeout, p.config.AllowPrivateFeeds)
 	checkedAt := time.Now().Unix()
 	if err != nil {
+		// Parent cancellation or parent expiry stops work cleanly without recording
+		// a feed failure or triggering failure backoff; only attempt-level failures
+		// while the parent context remains active count against consecutive_failures.
+		if parentCtx.Err() != nil {
+			p.logger.Debug("feed pull stopped by parent context", "feed_id", feed.ID, "feed_name", feed.Name, "error", parentCtx.Err())
+			return
+		}
+
 		httpStatus := 0
 		retryAfterUntil := int64(0)
 		if result != nil {
@@ -275,12 +337,15 @@ func (p *Puller) pullFeed(ctx context.Context, feed *model.Feed) {
 // started refresh jobs have completed. It bypasses backoff/interval skip logic.
 // Concurrency is controlled by the same semaphore as periodic pulls.
 func (p *Puller) RefreshAll(ctx context.Context) (int, error) {
+	lifecycleCtx, stopLifecycle := p.bindLifecycleContext(ctx)
+	defer stopLifecycle()
+
 	feeds, err := p.store.ListFeeds()
 	if err != nil {
 		return 0, fmt.Errorf("list feeds: %w", err)
 	}
 
-	count, err := p.dispatchFeeds(ctx, feeds, func(feed *model.Feed) bool {
+	count, err := p.dispatchFeeds(lifecycleCtx, feeds, func(feed *model.Feed) bool {
 		return !feed.Suspended
 	})
 	if err != nil {
@@ -301,7 +366,17 @@ func (p *Puller) dispatchFeeds(ctx context.Context, feeds []*model.Feed, shouldP
 			continue
 		}
 
+		if err := ctx.Err(); err != nil {
+			acquireErr = err
+			break
+		}
+
 		if err := p.concurrency.Acquire(ctx, 1); err != nil {
+			acquireErr = err
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			p.concurrency.Release(1)
 			acquireErr = err
 			break
 		}
@@ -322,17 +397,32 @@ func (p *Puller) dispatchFeeds(ctx context.Context, feeds []*model.Feed, shouldP
 // RefreshFeed manually triggers refresh for specific feed (bypasses skip logic).
 // Used by HTTP handler for manual refresh requests.
 func (p *Puller) RefreshFeed(ctx context.Context, feedID int64) error {
+	lifecycleCtx, stopLifecycle := p.bindLifecycleContext(ctx)
+	defer stopLifecycle()
+
+	if err := lifecycleCtx.Err(); err != nil {
+		return err
+	}
+
 	feed, err := p.store.GetFeed(feedID)
 	if err != nil {
 		return fmt.Errorf("get feed: %w", err)
 	}
 
-	if err := p.concurrency.Acquire(ctx, 1); err != nil {
+	if err := p.concurrency.Acquire(lifecycleCtx, 1); err != nil {
 		return err
 	}
 	defer p.concurrency.Release(1)
 
-	p.pullFeed(ctx, feed)
+	if err := lifecycleCtx.Err(); err != nil {
+		return err
+	}
+
+	p.pullFeed(lifecycleCtx, feed)
+	if lifecycleCtx.Err() != nil {
+		return lifecycleCtx.Err()
+	}
+
 	// Manual refresh rewrites next_check_at (possibly earlier than the
 	// sleeping timer's deadline); every writer outside pullDue must wake.
 	p.Wake()

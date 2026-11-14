@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -236,4 +237,209 @@ func TestRefreshFeedBackfillsNameFromTitle(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPullerAttemptTimeoutStartsAfterSemaphoreAcquisition(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/slow-success-a", "/slow-success-b":
+			time.Sleep(160 * time.Millisecond)
+		case "/attempt-timeout":
+			select {
+			case <-time.After(400 * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Demo</title><link>https://example.com</link>
+<item><guid>%s</guid><title>Item</title><link>https://example.com%s</link></item>
+</channel></rss>`, r.URL.Path, r.URL.Path)
+	}))
+	defer server.Close()
+
+	feedA, err := st.CreateFeed(1, "Feed A", server.URL+"/slow-success-a", "", "", nil)
+	if err != nil {
+		t.Fatalf("create feed A: %v", err)
+	}
+	feedB, err := st.CreateFeed(1, "Feed B", server.URL+"/slow-success-b", "", "", nil)
+	if err != nil {
+		t.Fatalf("create feed B: %v", err)
+	}
+	feedTimeout, err := st.CreateFeed(1, "Feed Timeout", server.URL+"/attempt-timeout", "", "", nil)
+	if err != nil {
+		t.Fatalf("create timeout feed: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       1,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+	p.timeout = 240 * time.Millisecond
+
+	// Two queued feeds under PullConcurrency=1 take ~320ms combined (>240ms),
+	// so the second feed only succeeds if its attempt timeout starts after
+	// semaphore acquisition rather than when queued.
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for _, id := range []int64{feedA.ID, feedB.ID} {
+		wg.Add(1)
+		go func(feedID int64) {
+			defer wg.Done()
+			errCh <- p.RefreshFeed(context.Background(), feedID)
+		}(id)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("queued refresh failed unexpectedly: %v", err)
+		}
+	}
+
+	for _, id := range []int64{feedA.ID, feedB.ID} {
+		got, err := st.GetFeed(id)
+		if err != nil {
+			t.Fatalf("get feed %d: %v", id, err)
+		}
+		if got.FetchState.LastSuccessAt <= 0 || got.FetchState.ConsecutiveFailures != 0 {
+			t.Fatalf("feed %d state = %+v, want success with 0 failures", id, got.FetchState)
+		}
+	}
+
+	// Attempt exceeding p.timeout while parent context remains active must count as failure.
+	if err := p.RefreshFeed(context.Background(), feedTimeout.ID); err != nil {
+		t.Fatalf("timeout RefreshFeed returned unexpected error: %v", err)
+	}
+	gotTimeout, err := st.GetFeed(feedTimeout.ID)
+	if err != nil {
+		t.Fatalf("get timeout feed: %v", err)
+	}
+	if gotTimeout.FetchState.ConsecutiveFailures != 1 || gotTimeout.FetchState.LastError == "" {
+		t.Fatalf("timeout feed state = %+v, want consecutive_failures=1 and non-empty last_error", gotTimeout.FetchState)
+	}
+}
+
+func TestPullerParentCancellationDoesNotRecordFailure(t *testing.T) {
+	t.Run("shutdown context cancel after HTTP dispatch avoids failure backoff", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "test.db")
+		st, err := store.New(dbPath)
+		if err != nil {
+			t.Fatalf("create store: %v", err)
+		}
+		defer st.Close()
+
+		dispatched := make(chan struct{})
+		var queuedHits atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/queued" {
+				queuedHits.Add(1)
+				return
+			}
+			close(dispatched)
+			<-r.Context().Done()
+		}))
+		defer server.Close()
+
+		inFlight, err := st.CreateFeed(1, "InFlight", server.URL+"/inflight", "", "", nil)
+		if err != nil {
+			t.Fatalf("create inflight feed: %v", err)
+		}
+		queued, err := st.CreateFeed(1, "Queued", server.URL+"/queued", "", "", nil)
+		if err != nil {
+			t.Fatalf("create queued feed: %v", err)
+		}
+
+		shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+		p := NewWithContext(shutdownCtx, st, &config.Config{
+			PullInterval:      1800,
+			PullTimeout:       5,
+			PullConcurrency:   1,
+			PullMaxBackoff:    604800,
+			AllowPrivateFeeds: true,
+		})
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := p.RefreshAll(context.Background())
+			done <- err
+		}()
+
+		<-dispatched
+		shutdownCancel()
+
+		if err := <-done; err == nil {
+			t.Fatal("expected RefreshAll to return cancellation error on shutdown")
+		}
+
+		for _, id := range []int64{inFlight.ID, queued.ID} {
+			got, err := st.GetFeed(id)
+			if err != nil {
+				t.Fatalf("get feed %d: %v", id, err)
+			}
+			if got.FetchState.ConsecutiveFailures != 0 || got.FetchState.LastErrorAt != 0 || got.FetchState.LastError != "" {
+				t.Fatalf("feed %d recorded false failure on shutdown: %+v", id, got.FetchState)
+			}
+		}
+		if queuedHits.Load() != 0 {
+			t.Fatalf("expected queued feed not to be requested after shutdown, got %d hits", queuedHits.Load())
+		}
+	})
+
+	t.Run("caller parent deadline expiry after HTTP dispatch avoids failure backoff", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "test.db")
+		st, err := store.New(dbPath)
+		if err != nil {
+			t.Fatalf("create store: %v", err)
+		}
+		defer st.Close()
+
+		dispatched := make(chan struct{})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			close(dispatched)
+			<-r.Context().Done()
+		}))
+		defer server.Close()
+
+		feed, err := st.CreateFeed(1, "Slow", server.URL+"/slow", "", "", nil)
+		if err != nil {
+			t.Fatalf("create feed: %v", err)
+		}
+
+		p := New(st, &config.Config{
+			PullInterval:      1800,
+			PullTimeout:       5,
+			PullConcurrency:   1,
+			PullMaxBackoff:    604800,
+			AllowPrivateFeeds: true,
+		})
+
+		parentCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		err = p.RefreshFeed(parentCtx, feed.ID)
+		<-dispatched
+		if err == nil {
+			t.Fatal("expected parent deadline expiry error from RefreshFeed")
+		}
+
+		got, err := st.GetFeed(feed.ID)
+		if err != nil {
+			t.Fatalf("get feed: %v", err)
+		}
+		if got.FetchState.ConsecutiveFailures != 0 || got.FetchState.LastErrorAt != 0 || got.FetchState.LastError != "" {
+			t.Fatalf("feed recorded false failure on parent deadline expiry: %+v", got.FetchState)
+		}
+	})
 }

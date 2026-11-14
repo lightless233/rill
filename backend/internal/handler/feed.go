@@ -162,12 +162,10 @@ func (h *Handler) createFeed(c *gin.Context) {
 		return
 	}
 
-	// Trigger initial pull in background; it wakes the scheduler when done.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
+	// Trigger initial pull in background; puller binds per-attempt timeout
+	// after semaphore admission and shutdown context for lifecycle cancellation.
 	go func(feedID int64) {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-		defer cancel()
-		if err := h.puller.RefreshFeed(ctx, feedID); err != nil {
+		if err := h.puller.RefreshFeed(context.Background(), feedID); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("initial feed pull failed", "feed_id", feedID, "error", err)
 		}
 	}(feed.ID)
@@ -347,11 +345,8 @@ func (h *Handler) refreshFeed(c *gin.Context) {
 
 	// Trigger refresh in background.
 	// Do not use the request context here: once the handler returns, it may be cancelled.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
 	go func(feedID int64) {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-		defer cancel()
-		if err := h.puller.RefreshFeed(ctx, feedID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if err := h.puller.RefreshFeed(context.Background(), feedID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("refresh feed failed", "feed_id", feedID, "error", err)
 		}
 	}(id)
@@ -426,12 +421,9 @@ func (h *Handler) batchCreateFeeds(c *gin.Context) {
 	}
 
 	// Trigger initial pull for each new feed in background.
-	refreshTimeout := time.Duration(h.config.PullTimeout) * time.Second
 	for _, id := range result.CreatedIDs {
 		go func(feedID int64) {
-			ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-			defer cancel()
-			if err := h.puller.RefreshFeed(ctx, feedID); err != nil {
+			if err := h.puller.RefreshFeed(context.Background(), feedID); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("initial feed pull failed", "feed_id", feedID, "error", err)
 			}
 		}(id)
