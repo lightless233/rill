@@ -363,7 +363,8 @@ export function ArticleDrawer() {
               </Button>
             </div>
           </div>
-        ) : (
+        ) : selectedArticleId !== null &&
+          (isItemLoading || (shouldFetchArticle && isItemError)) ? (
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-end border-b px-4 py-3 sm:px-6">
               <SheetTitle className="sr-only">
@@ -391,7 +392,7 @@ export function ArticleDrawer() {
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </SheetContent>
     </Sheet>
   );
