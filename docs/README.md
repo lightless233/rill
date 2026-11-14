@@ -30,3 +30,10 @@
   and read-state undo design
 - `old-database-schema.md`: legacy pre-migrations schema snapshot, kept
   for migration work only
+
+## Work items
+
+- [001 Spec](specs/001-2026-11-14-maintainability-baseline.md): corrective
+  maintenance scope and review evidence for the Rill fork
+- [001 Plan](plans/001-2026-11-14-maintainability-baseline.md): implementation
+  units and integration order for that scope
