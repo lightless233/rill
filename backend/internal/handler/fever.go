@@ -192,6 +192,10 @@ func (h *Handler) fever(c *gin.Context) {
 }
 
 func (h *Handler) verifyFeverAPIKey(apiKey string) bool {
+	if h.config != nil && strings.TrimSpace(h.config.Password) == "" {
+		return false
+	}
+
 	provided := strings.ToLower(strings.TrimSpace(apiKey))
 	expected := strings.ToLower(strings.TrimSpace(h.feverAPIKey))
 	if provided == "" || expected == "" {

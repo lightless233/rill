@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -631,5 +632,215 @@ func TestFeverRateLimitsFailedAuth(t *testing.T) {
 		if w.Code != http.StatusTooManyRequests {
 			t.Fatalf("attempt %d: expected status 429, got %d", i+1, w.Code)
 		}
+	}
+}
+
+func newTestHandlerWithConfig(t *testing.T, cfg *config.Config) (*Handler, *store.Store) {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	h, err := New(st, cfg, noopPuller{})
+	if err != nil {
+		_ = st.Close()
+		t.Fatalf("new handler: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
+
+	return h, st
+}
+
+func TestFeverRejectsRequestsWithoutNonemptyPassword(t *testing.T) {
+	var oidcSrv *httptest.Server
+	oidcSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                 oidcSrv.URL,
+				"authorization_endpoint": oidcSrv.URL + "/auth",
+				"token_endpoint":         oidcSrv.URL + "/token",
+				"jwks_uri":               oidcSrv.URL + "/jwks",
+			})
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"keys":[]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer oidcSrv.Close()
+
+	tests := []struct {
+		name             string
+		password         string
+		oidcIssuer       string
+		oidcRedirectURI  string
+		wantGroupsStatus int
+	}{
+		{
+			name:             "oidc only with empty password",
+			password:         "",
+			oidcIssuer:       oidcSrv.URL,
+			oidcRedirectURI:  "http://localhost/api/oidc/callback",
+			wantGroupsStatus: http.StatusUnauthorized,
+		},
+		{
+			name:             "oidc only with whitespace password",
+			password:         "   ",
+			oidcIssuer:       oidcSrv.URL,
+			oidcRedirectURI:  "http://localhost/api/oidc/callback",
+			wantGroupsStatus: http.StatusUnauthorized,
+		},
+		{
+			name:             "anonymous api mode with empty password",
+			password:         "",
+			wantGroupsStatus: http.StatusOK,
+		},
+		{
+			name:             "anonymous api mode with whitespace password",
+			password:         " \t ",
+			wantGroupsStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FUSION_DB_PATH", filepath.Join(t.TempDir(), "test.db"))
+			t.Setenv("FUSION_PASSWORD", tt.password)
+			t.Setenv("FUSION_ALLOW_EMPTY_PASSWORD", "true")
+			t.Setenv("FUSION_OIDC_ISSUER", tt.oidcIssuer)
+			t.Setenv("FUSION_OIDC_REDIRECT_URI", tt.oidcRedirectURI)
+
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("load config: %v", err)
+			}
+			h, st := newTestHandlerWithConfig(t, cfg)
+
+			feed, err := st.CreateFeed(1, "Feed", "https://example.com/rss.xml", "https://example.com", "", nil)
+			if err != nil {
+				t.Fatalf("create feed: %v", err)
+			}
+			item, err := st.CreateItem(feed.ID, "guid-1", "Entry", "https://example.com/1", "<p>Hi</p>", 1700000000)
+			if err != nil {
+				t.Fatalf("create item: %v", err)
+			}
+
+			r := h.SetupRouter()
+
+			// Normal API preserves documented behavior (401 for OIDC, 200 for anon).
+			apiW := performRequest(r, http.MethodGet, "/api/groups", nil, nil)
+			if apiW.Code != tt.wantGroupsStatus {
+				t.Fatalf("GET /api/groups status = %d, want %d", apiW.Code, tt.wantGroupsStatus)
+			}
+
+			// Fever must deny even the key derived from the configured empty/whitespace secret.
+			apiKey := deriveFeverAPIKey("fusion", tt.password)
+			body := feverRequestBody(apiKey, url.Values{
+				"items": {"1"},
+				"mark":  {"item"},
+				"id":    {strconv.FormatInt(item.ID, 10)},
+				"as":    {"read"},
+			})
+			w := performRequest(
+				r,
+				http.MethodPost,
+				"/fever?api",
+				strings.NewReader(body),
+				map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+			)
+			if w.Code != http.StatusOK {
+				t.Fatalf("POST /fever status = %d, want 200", w.Code)
+			}
+
+			var payload map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+			if payload["auth"] != float64(0) {
+				t.Fatalf("expected auth=0, got %#v", payload["auth"])
+			}
+			if _, ok := payload["items"]; ok {
+				t.Fatalf("expected no items payload when unauthenticated, got %#v", payload["items"])
+			}
+
+			storedItem, err := st.GetItem(item.ID)
+			if err != nil {
+				t.Fatalf("get item: %v", err)
+			}
+			if !storedItem.Unread {
+				t.Fatal("expected item unread state to remain unchanged")
+			}
+		})
+	}
+}
+
+func TestFeverPreservesUntrimmedPasswordWithWhitespace(t *testing.T) {
+	h, _ := newTestHandlerWithConfig(t, &config.Config{
+		Password:       " secret ",
+		FeverUsername:  "fusion",
+		PullTimeout:    30,
+		LoginRateLimit: 10,
+		LoginWindow:    60,
+		LoginBlock:     300,
+	})
+
+	r := h.SetupRouter()
+
+	untrimmedKey := deriveFeverAPIKey("fusion", " secret ")
+	w := performRequest(
+		r,
+		http.MethodPost,
+		"/fever?api",
+		strings.NewReader(feverRequestBody(untrimmedKey, nil)),
+		map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+	)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload["auth"] != float64(1) {
+		t.Fatalf("expected auth=1 for exact untrimmed password, got %#v", payload["auth"])
+	}
+
+	trimmedKey := deriveFeverAPIKey("fusion", "secret")
+	w2 := performRequest(
+		r,
+		http.MethodPost,
+		"/fever?api",
+		strings.NewReader(feverRequestBody(trimmedKey, nil)),
+		map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+	)
+	var payload2 map[string]any
+	if err := json.Unmarshal(w2.Body.Bytes(), &payload2); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload2["auth"] != float64(0) {
+		t.Fatalf("expected auth=0 for trimmed password, got %#v", payload2["auth"])
+	}
+
+	// Session authentication also continues to accept the exact configured password.
+	sessW := performRequest(
+		r,
+		http.MethodPost,
+		"/api/sessions",
+		strings.NewReader(`{"password":" secret "}`),
+		map[string]string{"Content-Type": "application/json"},
+	)
+	if sessW.Code != http.StatusOK {
+		t.Fatalf("POST /api/sessions status = %d, want 200", sessW.Code)
 	}
 }

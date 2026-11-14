@@ -47,11 +47,16 @@ func New(store *store.Store, config *config.Config, puller interface {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
+	var feverAPIKey string
+	if strings.TrimSpace(config.Password) != "" {
+		feverAPIKey = deriveFeverAPIKey(config.FeverUsername, config.Password)
+	}
+
 	h := &Handler{
 		store:        store,
 		config:       config,
 		passwordHash: passwordHash,
-		feverAPIKey:  deriveFeverAPIKey(config.FeverUsername, config.Password),
+		feverAPIKey:  feverAPIKey,
 		allowAnonAPI: strings.TrimSpace(config.Password) == "" && strings.TrimSpace(config.OIDCIssuer) == "",
 		puller:       puller,
 		sessions:     make(map[string]int64),

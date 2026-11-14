@@ -20,6 +20,8 @@ Fever clients should send:
 Username is configured by `FUSION_FEVER_USERNAME` (default: `fusion`).
 Password is your Fusion login password (`FUSION_PASSWORD`).
 
+Fever requires a nonempty `FUSION_PASSWORD` (as checked by `strings.TrimSpace`). When no nonempty password is configured — including OIDC-only deployments or anonymous mode with `FUSION_ALLOW_EMPTY_PASSWORD=true` — Fever authentication is disabled and all requests fail with `"auth": 0`.
+
 Example (macOS):
 
 ```bash
