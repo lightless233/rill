@@ -1,0 +1,37 @@
+name: rill
+
+services:
+  fusion:
+    image: ${RILL_IMAGE:-lightless-fusion:latest}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      FUSION_DB_PATH: /data/fusion.db
+      FUSION_PULL_INTERVAL: ${FUSION_PULL_INTERVAL:-1800}
+      FUSION_PULL_CONCURRENCY: ${FUSION_PULL_CONCURRENCY:-3}
+      FUSION_LOG_FORMAT: ${FUSION_LOG_FORMAT:-json}
+    # Optional if exposing directly instead of through a reverse-proxy network:
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+    networks:
+      - proxy
+    mem_limit: 256m
+    memswap_limit: 384m
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+    name: ${RILL_PROXY_NETWORK:-web}
