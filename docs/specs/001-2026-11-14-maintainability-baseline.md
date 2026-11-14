@@ -1,6 +1,7 @@
 # 001: Rill maintainability and correctness baseline
 
-Status: proposed implementation contract; documentation only, implementation not started.
+Status: implementation contract clarified after baseline review; documentation only,
+implementation not started.
 
 ## Goal and scope
 
@@ -80,6 +81,10 @@ credential configuration or derive a usable credential from an empty secret.
 Explicit anonymous web/API mode keeps its documented behavior; it does not
 implicitly enable Fever without a password.
 
+Use `strings.TrimSpace(config.Password) != ""` only to decide whether password
+authentication is enabled. Derive the Fever key from the original configured
+password, preserving existing clients whose nonempty passwords contain whitespace.
+
 Acceptance: an isolated OIDC-only fixture cannot use the predictable empty-secret
 key to read or mutate Fever data. Existing nonempty-password Fever clients and
 session authentication continue to work. See [Fever compatibility](../fever-api.md).
@@ -91,13 +96,50 @@ validation/discovery and normal pulls, including redirects and subsequent
 discovery requests. Disallowed targets must be rejected before connecting or
 reading a response, not merely removed from the final result list. Direct
 connections must use the addresses that were validated, without a new unchecked
-DNS resolution. Retain intentional private-feed opt-in and supported proxy use.
+DNS resolution. Replace the pinned finder's unguarded HTTP execution with local
+discovery using the guarded client; retain relevant service URL rules, HTML link
+discovery, RSS/Atom parsing and well-known probes.
+
+The validation endpoint keeps its existing response envelopes, with these outcomes:
+
+- `400`: malformed input, unsupported URL/proxy configuration, or a requested
+  target/primary redirect rejected by the destination policy.
+- `502`: failure to resolve or contact the primary target, timeout, or a final
+  non-2xx upstream response. A DNS failure is not malformed input.
+- `500`: an internal application failure, using the existing internal-error policy.
+- `200`: successful discovery, including an empty result after a successful page
+  fetch with no usable feed. Optional candidate/probe failures, including 404s,
+  do not turn a successfully fetched page into an upstream failure. Successfully
+  retrieved malformed feed XML must not produce a fabricated feed; retain empty
+  results when no alternative feed is found. Reject unsafe discovered candidates
+  before fetching or offering them.
+
+Update the existing unreachable-URL test to expect an error; its current empty
+success assertion is deliberately superseded. Keep primary retrieval failures
+distinct from parse failures and optional discovery misses.
+
+An explicitly configured proxy is a trusted relay and may itself use a private or
+loopback address without enabling private feeds. This exemption applies only to
+the configured proxy connection, never to a requested or redirected feed target.
+With private feeds disabled, continue validating target names through local DNS,
+as well as rejecting private IP literals/localhost, for initial and subsequent
+requests. Do not silently skip DNS validation when a proxy is present: proxy-only
+DNS is unsupported in this mode. Explicit private-feed opt-in allows proxy-side
+resolution without local public-address checks, with the existing loss of private
+destination protection.
+
+Address pinning is enforceable for direct connections. A proxy can resolve names
+independently; local DNS checks cannot prove its eventual destination. Proxy use
+therefore trusts the relay to enforce the same destination restrictions when
+private feeds are disabled. Do not claim end-to-end DNS pinning for proxy traffic
+or build a new proxy protocol to provide it in this baseline.
 
 Acceptance: controlled direct and redirect cases cannot reach blocked local or
 private targets with private feeds disabled. Public RSS/Atom and HTML discovery
-continue to work, as do allowed private fixtures with explicit opt-in. Discovery
-failures must produce an error outcome rather than a successful empty result;
-an actually successful page with no discoverable feed may still return empty.
+continue to work, as do allowed private fixtures with explicit opt-in and a local
+trusted proxy serving a permitted public target. Exercise blocked proxy targets
+and redirects, local DNS failure, upstream failure, successful HTML without feeds,
+and optional well-known misses with their distinct outcomes.
 
 ### R3. Waiting for a permit does not consume a fetch attempt's timeout
 
@@ -106,7 +148,11 @@ limit. The per-fetch budget begins when that attempt can execute, rather than wh
 it starts waiting. Queued work remains cancellable by operation/process lifecycle;
 this does not authorize unlimited retries or a new persistent job system.
 Keep the existing scheduling, suspension, cache validators, backoff and per-feed
-interval semantics. Do not count a never-started request as an HTTP fetch failure.
+interval semantics. Operation/process cancellation, including parent deadline
+expiry, must stop both queued and in-flight work without increasing consecutive
+failures or triggering failure backoff, even if the request was already sent.
+The attempt's own timeout while its parent operation remains active and real
+network/HTTP failures still count.
 
 Acceptance: a batch whose queue lasts longer than one fetch timeout still attempts
 every eligible feed while its operation remains active, provided each individual
@@ -122,6 +168,10 @@ or zero counters. Existing cached data may remain visible on a failed refresh,
 with a visible failure indication and a meaningful retry action. Reuse existing
 components and notification conventions.
 
+This includes article-detail drawer loading and search requests: a failed detail
+request must not leave an unexplained blank drawer, and a failed search must not
+display "No results found." Superseded/cancelled searches are not failed searches.
+
 Refresh acceptance must not be reported as completion. Keep the existing refresh
 routes and acceptance responses. Add `refresh_all_running: boolean` to the
 authenticated app-info response, reflecting the existing refresh-all operation;
@@ -135,6 +185,9 @@ polling stops after completion, an unrecovered status error, or departure from
 the relevant view. Do not create job IDs, persistent job storage, or a second
 query/cache system. Creation/import notices must describe accepted/created
 subscriptions without promising that their initial fetch has finished.
+The existing "Feed added successfully" and "Imported {count} feeds" notices
+already satisfy that scope. Keep them concise; creation and OPML import need
+immediate query invalidation, not extra completion fields or polling in this work.
 
 Acceptance: request failures never display the corresponding successful-empty
 message; a completed refresh displays newly fetched items/counters without a
@@ -146,8 +199,18 @@ An article's Star/Unstar action must reflect its actual linked bookmark even whe
 the total bookmark count exceeds the lookup page size. Preserve the starred view's
 own pagination, filtered lists, bookmark snapshots and orphaned bookmarks.
 Resolve state for relevant articles without loading every saved article's full
-content merely to obtain star indicators. Necessary item-response metadata may be
-added without removing or changing existing fields.
+content merely to obtain star indicators. Add `bookmark_id: number | null` to
+ordinary item list/detail responses and mirrored frontend Item types; it identifies
+the linked bookmark and is explicitly null when absent. Preserve item ordering,
+pagination totals and snapshot/orphan behavior.
+
+Add `bookmark_count: number` to authenticated app-info, using the existing
+unfiltered bookmark count query, including orphaned bookmarks. Use this metadata
+for the sidebar total rather than fetching a bookmark page with article bodies.
+A count-query failure is an error, never a fabricated zero. Reconcile this field,
+item bookmark metadata and starred queries after successful Star/Unstar actions.
+Keep the current success-only mutation updates; show the existing-style error
+toast on failure and preserve prior state. Optimistic updates are not required.
 
 Acceptance: an ordinary article outside the first global bookmark page offers
 Unstar and can be unstarred. Count, ordinary view, starred view and article detail
@@ -181,6 +244,8 @@ removed after both fresh initialization and migration of an existing database.
 ### R8. Declared engineering checks are usable and meaningful
 
 Use mutually supported compiler/linter dependencies with a consistent lockfile.
+Keep the current ESLint stack and move TypeScript to its supported stable 5.9
+line; do not adopt a prerelease linter stack merely to retain TypeScript 7.
 The lint command must execute successfully and run in frontend CI alongside the
 existing checks. Do not weaken assertions, bypass typing, disable legitimate
 rules, skip failing tests, or modify vendored UI components by hand to get green.
@@ -195,8 +260,11 @@ than only helper or string-formatting tests.
 
 ### R9. Preserve empty-Default visibility behavior
 
-Hide the system Default group in sidebar navigation and feed management only
-when the successful feed result confirms it is empty. Show it when populated.
+Identify the system Default group by `group.id === 1`, including after a rename.
+Hide it in sidebar navigation and feed management only when a successful complete
+feed query confirms there are no feeds with that group ID. Use unfiltered group
+membership, not the visible search/filter result. Show it when populated and
+retain it during loading or a failed feed query, even with cached empty data.
 Keep the group stored and available to appropriate group-selection controls.
 Do not infer emptiness from a failed request, delete the system group, or hide
 unrelated empty user-created groups.
@@ -206,10 +274,19 @@ all subscriptions, group assignments, bookmarks and read state across that chang
 
 ## Documentation discrepancy and follow-up boundaries
 
-The backend design's default private-network-protection description is incomplete:
-the discovery call path does not inherit the guarded client. R2 must close that
-gap and align its explanatory documentation. This Spec does not edit existing
-design documents ahead of implementation. No frontend documentation/code conflict
+The [backend design](../backend-design.md) describes default private-network
+protection without covering the unguarded discovery path or the proxy trust
+boundary. R2 must close the discovery gap and document the proxy limitation.
+The [API conventions](../api-conventions.md) do not yet describe R2's new upstream
+error outcome; update them with the implementation. The existing unreachable-URL
+test asserts successful emptiness and must change under R2.
+
+[CONTRIBUTING.md](../../CONTRIBUTING.md) accurately records the present lint
+incompatibility but says to wait for upstream TypeScript support. R8 instead
+chooses a supported compiler; T7 must restore lint to that checklist and remove
+the obsolete blocker after the toolchain is repaired. This discrepancy was
+omitted from the first draft. Do not change current setup/design guidance ahead
+of the implementation it describes. No frontend interaction-design conflict
 requiring a product decision was identified; the unread undo design is retained.
 
 Response-size limits and an article retention policy were identified as further
