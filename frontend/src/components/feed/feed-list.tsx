@@ -3,6 +3,7 @@ import { Inbox, Layers, Star } from "lucide-react";
 import { QueryErrorBanner } from "@/components/query-error";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { isArticleFilter } from "@/lib/article-filter";
+import { shouldHideDefaultGroup } from "@/lib/group-visibility";
 import { useGroups } from "@/queries/groups";
 import { useAppInfo } from "@/queries/app";
 import { useFeedLookup, useUnreadCounts } from "@/queries/feeds";
@@ -24,6 +25,7 @@ export function FeedList() {
     feeds,
     getFeedsByGroup,
     isLoading: isFeedsLoading,
+    isSuccess: isFeedsSuccess,
     isError: isFeedsError,
     refetch: refetchFeeds,
   } = useFeedLookup();
@@ -135,6 +137,16 @@ export function FeedList() {
         <div className="w-full min-w-0 space-y-0.5">
           {groups.map((group) => {
             const groupFeeds = getFeedsByGroup(group.id);
+            if (
+              shouldHideDefaultGroup({
+                groupId: group.id,
+                unfilteredGroupFeedCount: groupFeeds.length,
+                isFeedsSuccess,
+                isFeedsError,
+              })
+            ) {
+              return null;
+            }
 
             return (
               <FeedGroup

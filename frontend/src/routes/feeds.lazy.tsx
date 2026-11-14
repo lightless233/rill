@@ -37,6 +37,7 @@ import { feedAPI, groupAPI } from "@/lib/api";
 import type { AppInfoResponse, Feed, Group } from "@/lib/api";
 import { generateOPML, downloadFile } from "@/lib/opml";
 import { useI18n } from "@/lib/i18n";
+import { shouldHideDefaultGroup } from "@/lib/group-visibility";
 import {
   INITIAL_REFRESH_ALL_SYNC_STATE,
   reconcileRefreshAllState,
@@ -75,6 +76,7 @@ function FeedsPage() {
     feeds,
     getFeedsByGroup,
     isLoading: isFeedsLoading,
+    isSuccess: isFeedsSuccess,
     isError: isFeedsError,
     refetch: refetchFeeds,
   } = useFeedLookup();
@@ -261,12 +263,24 @@ function FeedsPage() {
     }
   };
 
-  const visibleGroups = groupedFeeds.filter(
-    ({ feeds: gf }) => gf.length > 0 || !isFiltering,
-  );
+  const visibleGroups = groupedFeeds.filter(({ group, feeds: gf }) => {
+    if (
+      shouldHideDefaultGroup({
+        groupId: group.id,
+        unfilteredGroupFeedCount: getFeedsByGroup(group.id).length,
+        isFeedsSuccess,
+        isFeedsError,
+      })
+    ) {
+      return false;
+    }
 
-  const totalVisible = groupedFeeds.reduce((sum, g) => sum + g.feeds.length, 0);
+    return gf.length > 0 || !isFiltering;
+  });
+
+  const totalVisible = visibleGroups.reduce((sum, g) => sum + g.feeds.length, 0);
   const hasLoadError = isGroupsError || isFeedsError;
+  const isLoading = isGroupsLoading || isFeedsLoading;
   const isRefreshAllActive =
     refreshFeedsMutation.isPending ||
     awaitingPostTriggerPoll ||
@@ -275,8 +289,7 @@ function FeedsPage() {
     if (isGroupsError) void refetchGroups();
     if (isFeedsError) void refetchFeeds();
   };
-  const hasNoFeeds =
-    !isGroupsLoading && !isFeedsLoading && !hasLoadError && feeds.length === 0;
+  const hasNoFeeds = !isLoading && !hasLoadError && feeds.length === 0;
   const deletingGroupMoveHint = useMemo(() => {
     if (!deletingGroup) {
       return "";
@@ -461,7 +474,7 @@ function FeedsPage() {
                   );
                 })}
 
-                {visibleGroups.length === 0 && (
+                {!isLoading && !hasLoadError && visibleGroups.length === 0 && (
                   <div className="py-12 text-center text-sm text-muted-foreground">
                     {t("feeds.noMatch")}
                   </div>
