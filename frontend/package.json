@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsr generate && tsc -b && vite build",
     "check:i18n": "node scripts/check-i18n.mjs",
-    "lint": "eslint .",
+    "lint": "oxlint .",
     "typecheck": "tsr generate && tsc -b --noEmit",
     "test": "vitest run",
     "preview": "vite preview"
@@ -38,7 +38,6 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@tanstack/router-cli": "^1.167.21",
     "@tanstack/router-devtools": "^1.167.0",
     "@tanstack/router-vite-plugin": "^1.167.23",
@@ -46,13 +45,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "eslint": "^10.8.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.3",
-    "globals": "^17.8.0",
+    "oxlint": "^1.93.0",
     "shadcn": "^4.15.0",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.65.0",
+    "typescript": "~7.0.2",
     "vite": "^8.1.5",
     "vitest": "^5.0.3"
   }

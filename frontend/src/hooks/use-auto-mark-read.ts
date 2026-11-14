@@ -170,6 +170,6 @@ export function useAutoMarkRead({
       }
     };
     // target?.unread is intentionally absent: see the hook docs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [targetId, delayMs]);
 }
