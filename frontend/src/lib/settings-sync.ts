@@ -9,6 +9,7 @@ import {
   isLatinFont,
   isMonoFont,
   isSupportedLocale,
+  isTranslationMode,
   usePreferencesStore,
 } from "@/store/preferences";
 
@@ -165,6 +166,14 @@ export async function pullRemoteSettings(): Promise<void> {
       settings.mono_font !== preferences.monoFont
     ) {
       usePreferencesStore.getState().setMonoFont(settings.mono_font);
+    }
+
+    if (
+      settings.translation_mode !== null &&
+      isTranslationMode(settings.translation_mode) &&
+      settings.translation_mode !== preferences.translationMode
+    ) {
+      usePreferencesStore.getState().setTranslationMode(settings.translation_mode);
     }
 
     const storedTheme = localStorage.getItem("theme");

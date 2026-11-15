@@ -35,10 +35,13 @@ function saveCollapsedGroupIds(ids: number[]) {
   }
 }
 
+export type SettingsTab = "general" | "translation" | "about";
+
 interface UIState {
   // Modals
   isSearchOpen: boolean;
   isSettingsOpen: boolean;
+  settingsTab: SettingsTab;
   isAddGroupOpen: boolean;
   isAddFeedOpen: boolean;
   isEditFeedOpen: boolean;
@@ -52,7 +55,8 @@ interface UIState {
 
   // Actions
   setSearchOpen: (open: boolean) => void;
-  setSettingsOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean, tab?: SettingsTab) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   setAddGroupOpen: (open: boolean) => void;
   setAddFeedOpen: (open: boolean) => void;
   setEditFeedOpen: (open: boolean, feed?: Feed) => void;
@@ -66,6 +70,7 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   isSearchOpen: false,
   isSettingsOpen: false,
+  settingsTab: "general",
   isAddGroupOpen: false,
   isAddFeedOpen: false,
   isEditFeedOpen: false,
@@ -77,7 +82,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   setSearchOpen: (open) => set({ isSearchOpen: open }),
 
-  setSettingsOpen: (open) => set({ isSettingsOpen: open }),
+  setSettingsOpen: (open, tab) =>
+    set((state) => ({
+      isSettingsOpen: open,
+      settingsTab: tab ?? (open ? state.settingsTab : "general"),
+    })),
+
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
 
   setAddGroupOpen: (open) => set({ isAddGroupOpen: open }),
 

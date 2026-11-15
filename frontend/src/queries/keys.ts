@@ -64,4 +64,7 @@ export const queryKeys = {
     all: ["bookmarks"] as const,
     lists: () => [...queryKeys.bookmarks.all, "list"] as const,
   },
+  settings: {
+    all: ["settings"] as const,
+  },
 };

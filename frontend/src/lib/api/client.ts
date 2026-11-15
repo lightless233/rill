@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export class APIError extends Error {
   status: number;
@@ -15,6 +15,23 @@ let onUnauthorized: (() => void) | null = null;
 
 export function setUnauthorizedCallback(callback: () => void) {
   onUnauthorized = callback;
+}
+
+export async function parseAPIError(
+  endpoint: string,
+  response: Response,
+): Promise<APIError> {
+  if (response.status === 401 && onUnauthorized && endpoint !== "/sessions") {
+    onUnauthorized();
+  }
+
+  const error = await response
+    .json()
+    .catch(() => ({ error: "Unknown error" }));
+  return new APIError(
+    response.status,
+    error.error || `HTTP ${response.status}`,
+  );
 }
 
 async function request<T>(
@@ -36,17 +53,7 @@ async function request<T>(
     // A 401 from /sessions is handled by its callers (the login form shows an
     // error toast, the route guard redirects); the global redirect here would
     // reload the page and destroy that feedback.
-    if (response.status === 401 && onUnauthorized && endpoint !== "/sessions") {
-      onUnauthorized();
-    }
-
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new APIError(
-      response.status,
-      error.error || `HTTP ${response.status}`,
-    );
+    throw await parseAPIError(endpoint, response);
   }
 
   if (response.status === 204 || response.status === 205) {
@@ -70,8 +77,13 @@ async function get<T>(endpoint: string, options?: RequestInit): Promise<T> {
   return request<T>(endpoint, { ...options, method: "GET" });
 }
 
-async function post<T>(endpoint: string, data?: unknown): Promise<T> {
+async function post<T>(
+  endpoint: string,
+  data?: unknown,
+  options?: RequestInit,
+): Promise<T> {
   return request<T>(endpoint, {
+    ...options,
     method: "POST",
     body: data ? JSON.stringify(data) : undefined,
   });

@@ -4,8 +4,12 @@ import {
   CircleCheck,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ExternalLink,
+  Languages,
   Loader2,
+  RotateCw,
+  Sparkles,
   Star,
   X,
 } from "lucide-react";
@@ -14,6 +18,12 @@ import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useUrlState } from "@/hooks/use-url-state";
 import type { Item } from "@/lib/api";
 import {
@@ -29,14 +39,16 @@ import {
 import { useArticleList } from "@/hooks/use-article-list";
 import { useArticleNavigation } from "@/hooks/use-keyboard";
 import { useAutoMarkRead } from "@/hooks/use-auto-mark-read";
+import { useArticleSummary } from "@/hooks/use-article-summary";
+import { useArticleTranslation } from "@/hooks/use-article-translation";
 import { useI18n } from "@/lib/i18n";
 import { cn, formatDate } from "@/lib/utils";
-import { processArticleContent } from "@/lib/content";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { FeedFavicon } from "@/components/feed/feed-favicon";
 import { toSafeExternalUrl } from "@/lib/safe-url";
 import { useReadStatePins, usePreferencesStore } from "@/store";
 import { autoMarkReadDelayMs } from "@/store/preferences";
+import type { ArticleViewMode } from "@/lib/translation";
 
 export function ArticleDrawer() {
   const { t } = useI18n();
@@ -132,6 +144,32 @@ export function ArticleDrawer() {
   const safeArticleLink = displayedArticle
     ? toSafeExternalUrl(displayedArticle.link)
     : null;
+
+  const {
+    status: translationStatus,
+    viewMode,
+    setViewMode,
+    translatedTitle,
+    receivedSegments,
+    totalSegments,
+    renderedHtml,
+    hasTranslatableContent,
+    hasTranslation,
+    startTranslation,
+    cancelTranslation,
+  } = useArticleTranslation(displayedArticle, safeArticleLink);
+
+  const {
+    status: summaryStatus,
+    renderedSummaryHtml,
+    summaryModel,
+    hasSummary,
+    hasSummarizableContent,
+    isOpen: isSummaryOpen,
+    setOpen: setSummaryOpen,
+    startSummary,
+    cancelSummary,
+  } = useArticleSummary(displayedArticle);
 
   const autoMarkRead = usePreferencesStore((s) => s.autoMarkRead);
   const autoMarkDelayMs = autoMarkReadDelayMs(autoMarkRead);
@@ -246,8 +284,8 @@ export function ArticleDrawer() {
         {displayedArticle ? (
           <div className="flex h-full flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 border-b px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -299,6 +337,106 @@ export function ArticleDrawer() {
                     {t("article.action.original")}
                   </Button>
                 )}
+
+                {translationStatus === "translating" ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelTranslation}
+                      className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {totalSegments > 0
+                        ? t("article.translation.translatingProgress", {
+                            done: receivedSegments,
+                            total: totalSegments,
+                          })
+                        : t("article.translation.translating")}
+                    </Button>
+                    {receivedSegments > 0 && (
+                      <TranslationModeSwitcher
+                        value={viewMode}
+                        onChange={setViewMode}
+                      />
+                    )}
+                  </div>
+                ) : hasTranslation ? (
+                  <div className="flex items-center gap-1.5">
+                    <TranslationModeSwitcher
+                      value={viewMode}
+                      onChange={setViewMode}
+                    />
+                    <TooltipProvider delay={300}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              variant="outline"
+                              size="icon-sm"
+                              onClick={() => void startTranslation({ force: true })}
+                              aria-label={t("article.translation.retranslate")}
+                              className="h-[30px] w-[30px] text-muted-foreground"
+                            />
+                          }
+                        >
+                          <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {t("article.translation.retranslate")}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!hasTranslatableContent}
+                    onClick={() => void startTranslation()}
+                    className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                  >
+                    <Languages className="h-4 w-4" />
+                    {t("article.action.translate")}
+                  </Button>
+                )}
+
+                {summaryStatus === "summarizing" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelSummary}
+                    className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("article.summary.summarizing")}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!hasSummarizableContent}
+                    aria-pressed={isSummaryOpen}
+                    onClick={() => {
+                      if (hasSummary) {
+                        setSummaryOpen(!isSummaryOpen);
+                      } else {
+                        void startSummary();
+                      }
+                    }}
+                    className={cn(
+                      "h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground",
+                      hasSummary &&
+                        isSummaryOpen &&
+                        "border-primary/40 bg-primary/8 text-foreground",
+                    )}
+                  >
+                    <Sparkles
+                      className={cn("h-4 w-4", hasSummary && "text-primary")}
+                    />
+                    {t("article.action.summarize")}
+                  </Button>
+                )}
               </div>
 
               <SheetTitle className="sr-only">
@@ -326,9 +464,18 @@ export function ArticleDrawer() {
                   />
                 )}
                 <div className="space-y-3">
-                  <h1 className="article-typography text-[28px] font-bold leading-[1.3]">
-                    {displayedArticle.title}
-                  </h1>
+                  <div>
+                    <h1 className="article-typography text-[28px] font-bold leading-[1.3]">
+                      {viewMode === "zh" && translatedTitle
+                        ? translatedTitle
+                        : displayedArticle.title}
+                    </h1>
+                    {viewMode === "bilingual" && translatedTitle && (
+                      <p className="article-typography mt-1.5 text-[22px] font-semibold leading-[1.35] text-foreground/75">
+                        {translatedTitle}
+                      </p>
+                    )}
+                  </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     {displayedArticle.feed_id > 0 ? (
                       <button
@@ -369,13 +516,75 @@ export function ArticleDrawer() {
                   </div>
                 </div>
 
+                {isSummaryOpen &&
+                  (summaryStatus === "summarizing" || hasSummary) && (
+                    <section
+                      aria-label={t("article.summary.title")}
+                      className="mt-5 rounded-xl border border-border/80 bg-muted/45 px-4 py-3.5 sm:px-5"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground/85">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span>{t("article.summary.title")}</span>
+                          {summaryModel && (
+                            <span className="font-normal text-muted-foreground">
+                              · {summaryModel}
+                            </span>
+                          )}
+                          {summaryStatus === "summarizing" && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {summaryStatus !== "summarizing" && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => void startSummary({ force: true })}
+                              aria-label={t("article.summary.resummarize")}
+                              title={t("article.summary.resummarize")}
+                              className="h-7 w-7 text-muted-foreground"
+                            >
+                              <RotateCw
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => setSummaryOpen(false)}
+                            aria-label={t("article.summary.collapse")}
+                            title={t("article.summary.collapse")}
+                            className="h-7 w-7 text-muted-foreground"
+                          >
+                            <ChevronUp
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
+                          </Button>
+                        </div>
+                      </div>
+                      {renderedSummaryHtml ? (
+                        <div
+                          className="article-typography rill-summary-content space-y-2 text-[14.5px] leading-[1.68] text-foreground/90"
+                          dangerouslySetInnerHTML={{
+                            __html: renderedSummaryHtml,
+                          }}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {t("article.summary.summarizing")}
+                        </p>
+                      )}
+                    </section>
+                  )}
+
                 <div
                   className="typeset typeset-article mt-6 min-w-0 max-w-none"
                   dangerouslySetInnerHTML={{
-                    __html: processArticleContent(
-                      displayedArticle.content,
-                      safeArticleLink ?? undefined,
-                    ),
+                    __html: renderedHtml,
                   }}
                 />
               </article>
@@ -437,5 +646,48 @@ export function ArticleDrawer() {
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function TranslationModeSwitcher({
+  value,
+  onChange,
+}: {
+  value: ArticleViewMode;
+  onChange: (mode: ArticleViewMode) => void;
+}) {
+  const { t } = useI18n();
+  const options: Array<{ mode: ArticleViewMode; label: string }> = [
+    { mode: "original", label: t("article.translation.mode.original") },
+    { mode: "bilingual", label: t("article.translation.mode.bilingual") },
+    { mode: "zh", label: t("article.translation.mode.zh") },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label={t("article.action.translate")}
+      className="inline-flex h-[30px] items-center rounded-md border border-input bg-muted/40 p-0.5"
+    >
+      {options.map((option) => {
+        const active = value === option.mode;
+        return (
+          <button
+            key={option.mode}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.mode)}
+            className={cn(
+              "rounded-[4px] px-2 py-0.5 text-[12px] font-medium transition-colors",
+              active
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

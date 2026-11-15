@@ -74,14 +74,44 @@ type Item struct {
 // Settings holds the user's synced preferences. A nil field means the user
 // has never explicitly chosen a value (clients fall back to their own default).
 type Settings struct {
-	Locale          *string `json:"locale"`
-	ArticlePageSize *int64  `json:"article_page_size"`
-	Theme           *string `json:"theme"`
-	AutoMarkRead    *string `json:"auto_mark_read"`
-	LatinFont       *string `json:"latin_font"`
-	CJKFont         *string `json:"cjk_font"`
-	MonoFont        *string `json:"mono_font"`
-	UpdatedAt       int64   `json:"updated_at"`
+	Locale                *string `json:"locale"`
+	ArticlePageSize       *int64  `json:"article_page_size"`
+	Theme                 *string `json:"theme"`
+	AutoMarkRead          *string `json:"auto_mark_read"`
+	LatinFont             *string `json:"latin_font"`
+	CJKFont               *string `json:"cjk_font"`
+	MonoFont              *string `json:"mono_font"`
+	TranslationAPIURL     *string `json:"translation_api_url"`
+	TranslationAPIKeySet  bool    `json:"translation_api_key_set"`
+	TranslationAPIKeyMask string  `json:"translation_api_key_mask"`
+	TranslationModel      *string `json:"translation_model"`
+	TranslationMode       *string `json:"translation_mode"`
+	UpdatedAt             int64   `json:"updated_at"`
+}
+
+// TranslatedSegment holds one translated text segment identified by block key.
+type TranslatedSegment struct {
+	ID   int    `json:"id"`
+	Text string `json:"text"`
+}
+
+// ArticleTranslation stores a cached translation of an article snapshot.
+type ArticleTranslation struct {
+	ContentHash     string              `json:"content_hash"`
+	TargetLang      string              `json:"target_lang"`
+	TranslatedTitle string              `json:"translated_title"`
+	Blocks          []TranslatedSegment `json:"blocks"`
+	Model           string              `json:"model"`
+	UpdatedAt       int64               `json:"updated_at"`
+}
+
+// ArticleSummary stores a cached AI summary of an article snapshot.
+type ArticleSummary struct {
+	ContentHash string `json:"content_hash"`
+	TargetLang  string `json:"target_lang"`
+	Summary     string `json:"summary"`
+	Model       string `json:"model"`
+	UpdatedAt   int64  `json:"updated_at"`
 }
 
 // Bookmark represents a saved item snapshot.

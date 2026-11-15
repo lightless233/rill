@@ -12,12 +12,14 @@ import (
 	"github.com/0x2E/fusion/internal/auth"
 	"github.com/0x2E/fusion/internal/config"
 	"github.com/0x2E/fusion/internal/store"
+	"github.com/0x2E/fusion/internal/translator"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	store        *store.Store
 	config       *config.Config
+	translator   *translator.Client
 	passwordHash string // bcrypt hash computed at startup
 	feverAPIKey  string // md5(username:password) used by Fever API
 	allowAnonAPI bool   // true when both password and OIDC auth are disabled
@@ -55,6 +57,7 @@ func New(store *store.Store, config *config.Config, puller interface {
 	h := &Handler{
 		store:        store,
 		config:       config,
+		translator:   translator.NewClient(),
 		passwordHash: passwordHash,
 		feverAPIKey:  feverAPIKey,
 		allowAnonAPI: strings.TrimSpace(config.Password) == "" && strings.TrimSpace(config.OIDCIssuer) == "",
@@ -157,6 +160,13 @@ func (h *Handler) SetupRouter() *gin.Engine {
 
 			auth.GET("/settings", h.getSettings)
 			auth.PATCH("/settings", h.updateSettings)
+
+			auth.POST("/translations/lookup", h.lookupTranslation)
+			auth.POST("/translations", h.translateArticle)
+			auth.POST("/translations/test", h.testTranslation)
+
+			auth.POST("/summaries/lookup", h.lookupSummary)
+			auth.POST("/summaries", h.summarizeArticle)
 		}
 	}
 

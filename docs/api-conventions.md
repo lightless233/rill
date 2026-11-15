@@ -89,8 +89,17 @@ Three cases return the status with an empty body instead: unknown routes
   clears it back to the global interval; any other value must be in the
   closed set returned by `GET /api/app` (`allowed_refresh_intervals`).
 - `PATCH /api/settings` is a partial update: an absent field leaves the stored
-  value unchanged, and there is deliberately no way to clear a preference
-  back to null. Closed sets: locale `en|zh|de|fr|es|ru|pt|sv`, theme
-  `light|dark|system`, `auto_mark_read` `off|open|5|10|30`,
-  `article_page_size` 1–100, and the typography allow-lists (`latin_font`,
-  `cjk_font`, `mono_font`) defined in `backend/internal/handler/settings.go`.
+  value unchanged. Preferences cannot be reset to `null`; string translation
+  config fields (`translation_api_url`, `translation_api_key`,
+  `translation_model`) accept `""` to clear them, and `GET /api/settings` never
+  returns `translation_api_key` in plaintext (exposing only
+  `translation_api_key_set` and `translation_api_key_mask`). Closed sets: locale
+  `en|zh|de|fr|es|ru|pt|sv`, theme `light|dark|system`, `auto_mark_read`
+  `off|open|5|10|30`, `article_page_size` 1–100, `translation_mode`
+  `bilingual|zh`, and the typography allow-lists (`latin_font`, `cjk_font`,
+  `mono_font`) defined in `backend/internal/handler/settings.go`.
+- `POST /api/translations` (`meta`, `segment`, `done`, `error`) and
+  `POST /api/summaries` (`meta`, `delta`, `done`, `error`) stream
+  `text/event-stream` events instead of a JSON envelope once pre-flight
+  validation succeeds (invalid requests and missing credentials still return
+  standard JSON errors).

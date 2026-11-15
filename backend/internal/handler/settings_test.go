@@ -12,14 +12,19 @@ import (
 
 type settingsEnvelope struct {
 	Data struct {
-		Locale          *string `json:"locale"`
-		ArticlePageSize *int64  `json:"article_page_size"`
-		Theme           *string `json:"theme"`
-		AutoMarkRead    *string `json:"auto_mark_read"`
-		LatinFont       *string `json:"latin_font"`
-		CJKFont         *string `json:"cjk_font"`
-		MonoFont        *string `json:"mono_font"`
-		UpdatedAt       int64   `json:"updated_at"`
+		Locale                *string `json:"locale"`
+		ArticlePageSize       *int64  `json:"article_page_size"`
+		Theme                 *string `json:"theme"`
+		AutoMarkRead          *string `json:"auto_mark_read"`
+		LatinFont             *string `json:"latin_font"`
+		CJKFont               *string `json:"cjk_font"`
+		MonoFont              *string `json:"mono_font"`
+		TranslationAPIURL     *string `json:"translation_api_url"`
+		TranslationAPIKeySet  bool    `json:"translation_api_key_set"`
+		TranslationAPIKeyMask string  `json:"translation_api_key_mask"`
+		TranslationModel      *string `json:"translation_model"`
+		TranslationMode       *string `json:"translation_mode"`
+		UpdatedAt             int64   `json:"updated_at"`
 	} `json:"data"`
 }
 
@@ -176,6 +181,10 @@ func TestUpdateSettingsValidation(t *testing.T) {
 		{"empty cjk font", `{"cjk_font":""}`, "invalid cjk_font"},
 		{"invalid mono font", `{"mono_font":"courier"}`, "invalid mono_font"},
 		{"empty mono font", `{"mono_font":""}`, "invalid mono_font"},
+		{"invalid translation url", `{"translation_api_url":"ftp://example.com"}`, "invalid translation_api_url"},
+		{"malformed translation url", `{"translation_api_url":"not-a-url"}`, "invalid translation_api_url"},
+		{"invalid translation mode", `{"translation_mode":"en"}`, "invalid translation_mode"},
+		{"empty translation mode", `{"translation_mode":""}`, "invalid translation_mode"},
 	}
 
 	for _, tt := range tests {
@@ -305,5 +314,33 @@ func TestUpdateSettingsFontFieldsSingleAndRoundTrip(t *testing.T) {
 		settings.CJKFont == nil || *settings.CJKFont != "lxgw-wenkai" ||
 		settings.MonoFont == nil || *settings.MonoFont != "jetbrains-mono" {
 		t.Errorf("expected font fields to survive an unrelated PATCH, got %+v", settings)
+	}
+}
+
+func TestUpdateSettingsTranslationDoesNotExposeRawKey(t *testing.T) {
+	r, cookie := newSettingsTestRouter(t)
+
+	const secret = "sk-deepseek-secret-9876"
+	w := performRequest(
+		r,
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(`{"translation_api_url":"https://api.deepseek.com","translation_api_key":"`+secret+`","translation_model":"deepseek-chat","translation_mode":"zh"}`),
+		nil,
+		cookie,
+	)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH translation fields: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), secret) {
+		t.Fatalf("settings response leaked raw API key: %s", w.Body.String())
+	}
+
+	settings := decodeSettings(t, w).Data
+	if !settings.TranslationAPIKeySet || settings.TranslationAPIKeyMask == "" {
+		t.Fatalf("expected masked key info, got %+v", settings)
+	}
+	if settings.TranslationMode == nil || *settings.TranslationMode != "zh" {
+		t.Fatalf("expected translation_mode=zh, got %+v", settings)
 	}
 }

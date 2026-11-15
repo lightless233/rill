@@ -64,6 +64,8 @@ export interface Bookmark {
   created_at: number;
 }
 
+export type TranslationMode = "zh" | "bilingual";
+
 // User preferences synced via the backend. A null field means the user has
 // never explicitly chosen a value; clients fall back to their own defaults.
 export interface Settings {
@@ -74,11 +76,17 @@ export interface Settings {
   latin_font: string | null;
   cjk_font: string | null;
   mono_font: string | null;
+  translation_api_url: string | null;
+  translation_api_key_set: boolean;
+  translation_api_key_mask: string;
+  translation_model: string | null;
+  translation_mode: TranslationMode | null;
   updated_at: number;
 }
 
 // Only the fields being changed are sent; a missing field leaves the stored
 // value unchanged (indistinguishable from an explicit null on the wire).
+// Translation credential strings accept "" to clear the stored value.
 export interface UpdateSettingsRequest {
   locale?: string;
   article_page_size?: number;
@@ -87,6 +95,51 @@ export interface UpdateSettingsRequest {
   latin_font?: string;
   cjk_font?: string;
   mono_font?: string;
+  translation_api_url?: string;
+  translation_api_key?: string;
+  translation_model?: string;
+  translation_mode?: TranslationMode;
+}
+
+export interface TranslationBlockInput {
+  id: number;
+  text: string;
+}
+
+export interface TranslateArticleRequest {
+  title: string;
+  blocks: TranslationBlockInput[];
+  force?: boolean;
+}
+
+export interface TranslationLookupResponse {
+  found: boolean;
+  translated_title?: string;
+  blocks?: TranslationBlockInput[];
+  model?: string;
+}
+
+export interface TranslationTestRequest {
+  api_url?: string;
+  api_key?: string;
+  model?: string;
+}
+
+export interface TranslationTestResponse {
+  ok: boolean;
+  model: string;
+}
+
+export interface SummarizeArticleRequest {
+  title: string;
+  content: string;
+  force?: boolean;
+}
+
+export interface SummaryLookupResponse {
+  found: boolean;
+  summary?: string;
+  model?: string;
 }
 
 // API response wrappers

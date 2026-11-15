@@ -12,8 +12,12 @@ import {
   type MonoFont,
 } from "@/lib/fonts";
 
+import type { TranslationMode } from "@/lib/api/types";
+
 export { cjkFontOptions, latinFontOptions, monoFontOptions };
 export type { CJKFont, LatinFont, MonoFont };
+
+export const translationModeOptions = ["bilingual", "zh"] as const;
 
 export const supportedLocales = [
   "en",
@@ -43,6 +47,7 @@ const autoMarkReadSet = new Set<AutoMarkRead>(autoMarkReadOptions);
 const latinFontSet = new Set<LatinFont>(latinFontOptions);
 const cjkFontSet = new Set<CJKFont>(cjkFontOptions);
 const monoFontSet = new Set<MonoFont>(monoFontOptions);
+const translationModeSet = new Set<TranslationMode>(translationModeOptions);
 
 function resolveSupportedLocale(locale: string): AppLocale | null {
   const normalized = locale.toLowerCase().replace("_", "-");
@@ -65,6 +70,7 @@ const defaultLocale: AppLocale =
   "en";
 const defaultArticlePageSize: ArticlePageSize = 10;
 const defaultAutoMarkRead: AutoMarkRead = "off";
+const defaultTranslationMode: TranslationMode = "bilingual";
 
 function normalizeLocale(locale: string): AppLocale {
   const supportedLocale = resolveSupportedLocale(locale);
@@ -110,6 +116,14 @@ function normalizeMonoFont(value: string | undefined | null): MonoFont {
     : defaultMonoFont;
 }
 
+function normalizeTranslationMode(
+  value: string | undefined | null,
+): TranslationMode {
+  return value !== null && translationModeSet.has(value as TranslationMode)
+    ? (value as TranslationMode)
+    : defaultTranslationMode;
+}
+
 // "off" disables the feature; every other member maps to a delay where 0
 // means "as soon as the article is open".
 export function autoMarkReadDelayMs(option: AutoMarkRead): number | null {
@@ -126,12 +140,14 @@ export interface PreferencesState {
   latinFont: LatinFont;
   cjkFont: CJKFont;
   monoFont: MonoFont;
+  translationMode: TranslationMode;
   setLocale: (locale: string) => void;
   setArticlePageSize: (size: number) => void;
   setAutoMarkRead: (option: string) => void;
   setLatinFont: (font: string) => void;
   setCJKFont: (font: string) => void;
   setMonoFont: (font: string) => void;
+  setTranslationMode: (mode: string) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -143,6 +159,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       latinFont: defaultLatinFont,
       cjkFont: defaultCJKFont,
       monoFont: defaultMonoFont,
+      translationMode: defaultTranslationMode,
       setLocale: (locale) => set({ locale: normalizeLocale(locale) }),
       setArticlePageSize: (size) =>
         set({ articlePageSize: normalizeArticlePageSize(size) }),
@@ -151,6 +168,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setLatinFont: (font) => set({ latinFont: normalizeLatinFont(font) }),
       setCJKFont: (font) => set({ cjkFont: normalizeCJKFont(font) }),
       setMonoFont: (font) => set({ monoFont: normalizeMonoFont(font) }),
+      setTranslationMode: (mode) =>
+        set({ translationMode: normalizeTranslationMode(mode) }),
     }),
     {
       name: "fusion-preferences",
@@ -162,6 +181,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         latinFont: state.latinFont,
         cjkFont: state.cjkFont,
         monoFont: state.monoFont,
+        translationMode: state.translationMode,
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PreferencesState> | undefined;
@@ -183,6 +203,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           ),
           monoFont: normalizeMonoFont(
             persisted?.monoFont ?? currentState.monoFont,
+          ),
+          translationMode: normalizeTranslationMode(
+            persisted?.translationMode ?? currentState.translationMode,
           ),
         };
       },
@@ -216,4 +239,8 @@ export function isCJKFont(value: string): value is CJKFont {
 
 export function isMonoFont(value: string): value is MonoFont {
   return monoFontSet.has(value as MonoFont);
+}
+
+export function isTranslationMode(value: string): value is TranslationMode {
+  return translationModeSet.has(value as TranslationMode);
 }

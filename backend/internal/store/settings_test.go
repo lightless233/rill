@@ -174,3 +174,64 @@ func TestUpdateSettingsNoFields(t *testing.T) {
 		t.Errorf("expected a no-op update not to create the row, got updated_at=%d", settings.UpdatedAt)
 	}
 }
+
+func TestUpdateSettingsTranslationConfigAndMask(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	if err := store.UpdateSettings(UpdateSettingsParams{
+		TranslationAPIURL: strPtr(" https://api.deepseek.com "),
+		TranslationAPIKey: strPtr("sk-1234567890abcd"),
+		TranslationModel:  strPtr("deepseek-chat"),
+		TranslationMode:   strPtr("bilingual"),
+	}); err != nil {
+		t.Fatalf("UpdateSettings(translation) failed: %v", err)
+	}
+
+	settings, err := store.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings() failed: %v", err)
+	}
+	if settings.TranslationAPIURL == nil || *settings.TranslationAPIURL != "https://api.deepseek.com" {
+		t.Errorf("unexpected TranslationAPIURL: %v", settings.TranslationAPIURL)
+	}
+	if !settings.TranslationAPIKeySet || settings.TranslationAPIKeyMask != "sk-1••••abcd" {
+		t.Errorf("unexpected masked key state: set=%v mask=%q", settings.TranslationAPIKeySet, settings.TranslationAPIKeyMask)
+	}
+	if settings.TranslationModel == nil || *settings.TranslationModel != "deepseek-chat" {
+		t.Errorf("unexpected TranslationModel: %v", settings.TranslationModel)
+	}
+	if settings.TranslationMode == nil || *settings.TranslationMode != "bilingual" {
+		t.Errorf("unexpected TranslationMode: %v", settings.TranslationMode)
+	}
+
+	cfg, err := store.GetTranslationConfig()
+	if err != nil {
+		t.Fatalf("GetTranslationConfig() failed: %v", err)
+	}
+	if cfg.APIKey != "sk-1234567890abcd" || cfg.APIURL != "https://api.deepseek.com" || cfg.Model != "deepseek-chat" {
+		t.Errorf("unexpected raw config: %+v", cfg)
+	}
+
+	// Unrelated update preserves key and credentials; explicit "" clears key and url.
+	if err := store.UpdateSettings(UpdateSettingsParams{Theme: strPtr("dark")}); err != nil {
+		t.Fatalf("UpdateSettings(theme) failed: %v", err)
+	}
+	cfg, _ = store.GetTranslationConfig()
+	if cfg.APIKey != "sk-1234567890abcd" {
+		t.Fatalf("expected API key preserved across unrelated update, got %q", cfg.APIKey)
+	}
+
+	if err := store.UpdateSettings(UpdateSettingsParams{
+		TranslationAPIURL: strPtr(""),
+		TranslationAPIKey: strPtr(""),
+		TranslationModel:  strPtr(""),
+	}); err != nil {
+		t.Fatalf("UpdateSettings(clear translation) failed: %v", err)
+	}
+	settings, _ = store.GetSettings()
+	if settings.TranslationAPIURL != nil || settings.TranslationAPIKeySet ||
+		settings.TranslationAPIKeyMask != "" || settings.TranslationModel != nil {
+		t.Errorf("expected cleared translation fields, got %+v", settings)
+	}
+}

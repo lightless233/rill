@@ -1,8 +1,9 @@
-export { useUIStore } from "./ui";
+export { useUIStore, type SettingsTab } from "./ui";
 export {
   articlePageSizeOptions,
   autoMarkReadOptions,
   supportedLocales,
+  translationModeOptions,
   usePreferencesStore,
 } from "./preferences";
 export {

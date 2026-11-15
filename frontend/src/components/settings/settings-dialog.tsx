@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bug, Download, Info, Keyboard, Settings as SettingsIcon } from "lucide-react";
+import {
+  Bug,
+  Download,
+  Eye,
+  EyeOff,
+  Info,
+  Keyboard,
+  Languages,
+  Loader2,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -18,8 +30,10 @@ import {
   autoMarkReadOptions,
   articlePageSizeOptions,
   supportedLocales,
+  translationModeOptions,
   usePreferencesStore,
   useUIStore,
+  type SettingsTab,
 } from "@/store";
 import { usePWAInstall } from "@/hooks/use-pwa-install";
 import { localeLabels, useI18n } from "@/lib/i18n";
@@ -34,8 +48,16 @@ import {
   type LatinFont,
   type MonoFont,
 } from "@/lib/fonts";
-import { APIError, settingsAPI, type UpdateSettingsRequest } from "@/lib/api";
+import {
+  APIError,
+  settingsAPI,
+  translationAPI,
+  type TranslationMode,
+  type UpdateSettingsRequest,
+} from "@/lib/api";
 import { waitForSettingsSeed } from "@/lib/settings-sync";
+import { queryKeys } from "@/queries/keys";
+import { useSettingsQuery } from "@/queries/settings";
 import type { AppLocale } from "@/store/preferences";
 import { cn } from "@/lib/utils";
 
@@ -46,8 +68,6 @@ function GithubIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-type SettingsTab = "general" | "about";
 
 // Module scope so the counters survive unmounting a tab or the dialog
 // itself: a late-failing save from an old mount must not revert a newer
@@ -60,6 +80,7 @@ const changeGenerations = {
   latinFont: 0,
   cjkFont: 0,
   monoFont: 0,
+  translationMode: 0,
 };
 
 function beginChange(field: keyof typeof changeGenerations): number {
@@ -572,6 +593,288 @@ function GeneralContent() {
   );
 }
 
+function TranslationContent() {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const applySetting = useApplySetting();
+  const { translationMode, setTranslationMode } = usePreferencesStore();
+  const { data: settingsData } = useSettingsQuery();
+
+  const [apiURLDraft, setApiURLDraft] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [showAPIKey, setShowAPIKey] = useState(false);
+  const [modelNameDraft, setModelNameDraft] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const apiURL = apiURLDraft ?? settingsData?.translation_api_url ?? "";
+  const modelName = modelNameDraft ?? settingsData?.translation_model ?? "";
+
+  const modeItems = translationModeOptions.map((mode) => ({
+    value: mode,
+    label:
+      mode === "bilingual"
+        ? t("settings.translation.mode.bilingual")
+        : t("settings.translation.mode.zh"),
+  }));
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await waitForSettingsSeed();
+      const patch: UpdateSettingsRequest = {
+        translation_api_url: apiURL.trim(),
+        translation_model: modelName.trim(),
+      };
+      if (apiKey.trim()) {
+        patch.translation_api_key = apiKey.trim();
+      }
+      const res = await settingsAPI.update(patch);
+      if (res.data) {
+        queryClient.setQueryData(queryKeys.settings.all, res.data);
+      } else {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+      }
+      setApiURLDraft(null);
+      setModelNameDraft(null);
+      setApiKey("");
+      setShowAPIKey(false);
+      toast.success(t("settings.translation.saved"));
+    } catch (error) {
+      if (error instanceof APIError && error.status === 401) {
+        return;
+      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("settings.translation.saveFailed"),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearKey = async () => {
+    setIsSaving(true);
+    try {
+      await waitForSettingsSeed();
+      const res = await settingsAPI.update({ translation_api_key: "" });
+      if (res.data) {
+        queryClient.setQueryData(queryKeys.settings.all, res.data);
+      } else {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+      }
+      setApiKey("");
+      toast.success(t("settings.translation.keyCleared"));
+    } catch (error) {
+      if (error instanceof APIError && error.status === 401) {
+        return;
+      }
+      toast.error(t("settings.translation.saveFailed"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    try {
+      const res = await translationAPI.test({
+        api_url: apiURL.trim(),
+        api_key: apiKey.trim() || undefined,
+        model: modelName.trim(),
+      });
+      toast.success(
+        t("settings.translation.testSuccess", {
+          model: res.data?.model ?? (modelName.trim() || "deepseek-flash"),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof APIError && error.status === 401) {
+        return;
+      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("settings.translation.testFailed"),
+      );
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const hasSavedKey = Boolean(settingsData?.translation_api_key_set);
+  const keyMask = settingsData?.translation_api_key_mask ?? "";
+
+  return (
+    <div className="space-y-6">
+      {/* Default display mode */}
+      <div className="flex items-center justify-between gap-6">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium">
+            {t("settings.translation.defaultMode.label")}
+          </p>
+          <p className="text-[13px] text-muted-foreground">
+            {t("settings.translation.defaultMode.description")}
+          </p>
+        </div>
+        <Select
+          items={modeItems}
+          value={translationMode}
+          onValueChange={(nextValue) => {
+            if (!nextValue) return;
+            const nextMode = nextValue as TranslationMode;
+            const previous = translationMode;
+            void applySetting(
+              "translationMode",
+              beginChange("translationMode"),
+              { translation_mode: nextMode },
+              () => setTranslationMode(nextMode),
+              () => setTranslationMode(previous),
+            );
+          }}
+        >
+          <SelectTrigger className="w-auto min-w-36 shrink-0 justify-between gap-2 border-border">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {modeItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* DeepSeek / OpenAI-compatible API settings */}
+      <form
+        onSubmit={(e) => {
+          void handleSave(e);
+        }}
+        className="space-y-4 border-t border-border pt-5"
+      >
+        <div className="space-y-1.5">
+          <label
+            htmlFor="translation-api-url"
+            className="text-sm font-medium"
+          >
+            {t("settings.translation.apiUrl.label")}
+          </label>
+          <Input
+            id="translation-api-url"
+            type="url"
+            placeholder="https://api.deepseek.com"
+            value={apiURL}
+            onChange={(e) => setApiURLDraft(e.target.value)}
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("settings.translation.apiUrl.hint")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="translation-api-key"
+              className="text-sm font-medium"
+            >
+              {t("settings.translation.apiKey.label")}
+            </label>
+            {hasSavedKey && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {t("settings.translation.apiKey.configured", {
+                    mask: keyMask,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleClearKey()}
+                  disabled={isSaving}
+                  className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                >
+                  {t("settings.translation.apiKey.clear")}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <Input
+              id="translation-api-key"
+              type={showAPIKey ? "text" : "password"}
+              placeholder={
+                hasSavedKey
+                  ? t("settings.translation.apiKey.replacePlaceholder")
+                  : "sk-..."
+              }
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="new-password"
+              className="pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAPIKey((v) => !v)}
+              aria-label={
+                showAPIKey
+                  ? t("settings.translation.apiKey.hide")
+                  : t("settings.translation.apiKey.show")
+              }
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+            >
+              {showAPIKey ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label
+            htmlFor="translation-model"
+            className="text-sm font-medium"
+          >
+            {t("settings.translation.model.label")}
+          </label>
+          <Input
+            id="translation-model"
+            type="text"
+            placeholder="deepseek-flash"
+            value={modelName}
+            onChange={(e) => setModelNameDraft(e.target.value)}
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("settings.translation.model.hint")}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleTest()}
+            disabled={isTesting || isSaving}
+          >
+            {isTesting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t("settings.translation.test")}
+          </Button>
+          <Button type="submit" size="sm" disabled={isSaving || isTesting}>
+            {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t("common.save")}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function AboutContent() {
   const { t } = useI18n();
   const { isInstallAvailable, promptInstall } = usePWAInstall();
@@ -649,16 +952,17 @@ function AboutContent() {
 
 export function SettingsDialog() {
   const { t } = useI18n();
-  const { isSettingsOpen, setSettingsOpen } = useUIStore();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const { isSettingsOpen, setSettingsOpen, settingsTab, setSettingsTab } =
+    useUIStore();
 
   const tabTitles: Record<SettingsTab, string> = {
     general: t("settings.tab.general"),
+    translation: t("settings.tab.translation"),
     about: t("settings.tab.about"),
   };
 
   return (
-    <Dialog open={isSettingsOpen} onOpenChange={setSettingsOpen}>
+    <Dialog open={isSettingsOpen} onOpenChange={(open) => setSettingsOpen(open)}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:flex-row h-auto sm:h-[560px] sm:max-w-4xl gap-0 overflow-hidden p-0">
         {/* Sidebar (desktop) / Tab bar (mobile) */}
         <div className="flex shrink-0 flex-row border-b border-border bg-muted/30 px-3 pt-3 sm:w-[200px] sm:flex-col sm:border-b-0 sm:border-r sm:pt-4">
@@ -669,14 +973,20 @@ export function SettingsDialog() {
             <NavItem
               icon={<SettingsIcon className="h-4 w-4" />}
               label={t("settings.tab.general")}
-              active={activeTab === "general"}
-              onClick={() => setActiveTab("general")}
+              active={settingsTab === "general"}
+              onClick={() => setSettingsTab("general")}
+            />
+            <NavItem
+              icon={<Languages className="h-4 w-4" />}
+              label={t("settings.tab.translation")}
+              active={settingsTab === "translation"}
+              onClick={() => setSettingsTab("translation")}
             />
             <NavItem
               icon={<Info className="h-4 w-4" />}
               label={t("settings.tab.about")}
-              active={activeTab === "about"}
-              onClick={() => setActiveTab("about")}
+              active={settingsTab === "about"}
+              onClick={() => setSettingsTab("about")}
             />
           </nav>
         </div>
@@ -684,12 +994,13 @@ export function SettingsDialog() {
         {/* Content */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5 sm:p-6">
           <h2 className="mb-4 shrink-0 text-lg font-semibold sm:mb-6">
-            {tabTitles[activeTab]}
+            {tabTitles[settingsTab]}
           </h2>
 
           <div className="flex-1 overflow-y-auto pr-1">
-            {activeTab === "general" && <GeneralContent />}
-            {activeTab === "about" && <AboutContent />}
+            {settingsTab === "general" && <GeneralContent />}
+            {settingsTab === "translation" && <TranslationContent />}
+            {settingsTab === "about" && <AboutContent />}
           </div>
         </div>
       </DialogContent>

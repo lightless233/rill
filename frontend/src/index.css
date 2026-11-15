@@ -156,6 +156,83 @@
   --typeset-flow: 1.25em;
 }
 
+.typeset .rill-translation-block {
+  margin-block-start: 0.45em;
+  color: color-mix(in oklab, var(--foreground) 78%, var(--background));
+}
+
+.typeset .rill-translation-heading {
+  margin-block-start: 0.35em;
+  font-family: var(--typeset-font-heading);
+  font-weight: 600;
+  color: color-mix(in oklab, var(--foreground) 78%, var(--background));
+}
+
+.typeset .rill-translation-h1 {
+  font-size: 1.45em;
+  line-height: 1.35;
+}
+
+.typeset .rill-translation-h2 {
+  font-size: 1.125em;
+  line-height: 1.4;
+}
+
+.typeset .rill-translation-h3 {
+  font-size: 1.02em;
+  line-height: 1.45;
+}
+
+.typeset .rill-translation-h4,
+.typeset .rill-translation-h5,
+.typeset .rill-translation-h6 {
+  font-size: 0.9375em;
+  line-height: 1.5;
+}
+
+.typeset .rill-translation-heading + * {
+  margin-block-start: 1em;
+}
+
+.typeset .rill-translation-cell {
+  margin-top: 0.35em;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--foreground) 78%, var(--background));
+}
+
+.typeset .rill-translation-inline {
+  margin-inline-start: 0.5em;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--foreground) 76%, var(--background));
+}
+
+.rill-summary-content h4 {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.rill-summary-content ul {
+  list-style-type: disc;
+  padding-inline-start: 1.25rem;
+}
+
+.rill-summary-content ol {
+  list-style-type: decimal;
+  padding-inline-start: 1.25rem;
+}
+
+.rill-summary-content li + li {
+  margin-top: 0.25rem;
+}
+
+.rill-summary-content code {
+  font-family: var(--article-mono-font);
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background-color: color-mix(in oklab, var(--muted) 80%, var(--foreground) 8%);
+}
+
 .group-reorder-dragging,
 .group-reorder-dragging * {
   cursor: grabbing !important;
