@@ -320,3 +320,24 @@
     --drop-marker-color: Highlight;
   }
 }
+
+@media (min-width: 640px) {
+  [data-slot="sheet-content"].article-drawer-sheet[data-side="right"] {
+    max-width: clamp(
+      480px,
+      var(--article-drawer-width, max(840px, 60vw)),
+      calc(100vw - 24px)
+    );
+  }
+}
+
+[data-slot="sheet-content"].article-drawer-sheet[data-resizing="true"] {
+  transition: none !important;
+}
+
+.article-drawer-resizing,
+.article-drawer-resizing * {
+  cursor: col-resize !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}

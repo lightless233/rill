@@ -233,6 +233,8 @@ export const esMessages: PartialMessages = {
   "article.action.original": "Original",
   "article.action.star": "Destacar",
   "article.action.unstar": "Quitar",
+  "article.drawer.resize": "Ajustar el ancho del panel de lectura",
+  "article.drawer.resizeHint": "Arrastra para cambiar el ancho; doble clic para restablecer",
   "article.action.translate": "Traducir",
   "article.action.summarize": "Resumir",
   "article.summary.collapse": "Contraer resumen",

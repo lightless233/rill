@@ -233,6 +233,8 @@ export const deMessages: PartialMessages = {
   "article.action.original": "Original",
   "article.action.star": "Favorisieren",
   "article.action.unstar": "Entfernen",
+  "article.drawer.resize": "Breite des Lesebereichs ändern",
+  "article.drawer.resizeHint": "Ziehen zum Anpassen, Doppelklick zum Zurücksetzen",
   "article.action.translate": "Übersetzen",
   "article.action.summarize": "Zusammenfassen",
   "article.summary.collapse": "Zusammenfassung einklappen",

@@ -232,6 +232,8 @@ export const enMessages = {
   "article.action.original": "Original",
   "article.action.star": "Star",
   "article.action.unstar": "Unstar",
+  "article.drawer.resize": "Resize article drawer",
+  "article.drawer.resizeHint": "Drag to resize width, double-click to reset",
   "article.action.translate": "Translate",
   "article.action.summarize": "Summarize",
   "article.summary.collapse": "Collapse summary",

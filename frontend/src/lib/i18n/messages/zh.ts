@@ -233,6 +233,8 @@ export const zhMessages: PartialMessages = {
   "article.action.original": "原文",
   "article.action.star": "收藏",
   "article.action.unstar": "取消收藏",
+  "article.drawer.resize": "调整阅读抽屉宽度",
+  "article.drawer.resizeHint": "拖拽调整宽度，双击恢复默认",
   "article.action.translate": "翻译",
   "article.action.summarize": "总结",
   "article.summary.collapse": "收起总结",

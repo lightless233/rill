@@ -2,6 +2,23 @@ import { create } from "zustand";
 import type { Feed } from "@/lib/api";
 
 const COLLAPSED_GROUPS_STORAGE_KEY = "fusion-sidebar-collapsed-groups";
+const ARTICLE_DRAWER_WIDTH_STORAGE_KEY = "rill-article-drawer-width";
+
+export const ARTICLE_DRAWER_MIN_WIDTH = 480;
+export const ARTICLE_DRAWER_EDGE_MARGIN = 24;
+
+export function clampArticleDrawerWidth(
+  width: number,
+  viewportWidth: number,
+): number {
+  const maxWidth = Math.max(
+    ARTICLE_DRAWER_MIN_WIDTH,
+    viewportWidth - ARTICLE_DRAWER_EDGE_MARGIN,
+  );
+  return Math.round(
+    Math.min(maxWidth, Math.max(ARTICLE_DRAWER_MIN_WIDTH, width)),
+  );
+}
 
 function loadCollapsedGroupIds(): number[] {
   if (typeof window === "undefined") {
@@ -35,6 +52,41 @@ function saveCollapsedGroupIds(ids: number[]) {
   }
 }
 
+function loadArticleDrawerWidth(): number | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(ARTICLE_DRAWER_WIDTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < ARTICLE_DRAWER_MIN_WIDTH) {
+      return null;
+    }
+    return Math.round(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function saveArticleDrawerWidth(width: number | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    if (width === null) {
+      window.localStorage.removeItem(ARTICLE_DRAWER_WIDTH_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(
+        ARTICLE_DRAWER_WIDTH_STORAGE_KEY,
+        String(Math.round(width)),
+      );
+    }
+  } catch {
+    // Ignore storage quota / private mode write errors.
+  }
+}
+
 export type SettingsTab = "general" | "translation" | "about";
 
 interface UIState {
@@ -49,9 +101,10 @@ interface UIState {
   isImportOpmlOpen: boolean;
   isShortcutsOpen: boolean;
 
-  // Sidebar
+  // Sidebar & reader layout
   isSidebarOpen: boolean;
   collapsedGroupIds: number[];
+  articleDrawerWidth: number | null;
 
   // Actions
   setSearchOpen: (open: boolean) => void;
@@ -65,6 +118,7 @@ interface UIState {
   setSidebarOpen: (open: boolean) => void;
   setCollapsedGroupIds: (ids: number[]) => void;
   setGroupOpen: (groupId: number, open: boolean) => void;
+  setArticleDrawerWidth: (width: number | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -79,6 +133,7 @@ export const useUIStore = create<UIState>((set) => ({
   isShortcutsOpen: false,
   isSidebarOpen: false,
   collapsedGroupIds: loadCollapsedGroupIds(),
+  articleDrawerWidth: loadArticleDrawerWidth(),
 
   setSearchOpen: (open) => set({ isSearchOpen: open }),
 
@@ -120,4 +175,15 @@ export const useUIStore = create<UIState>((set) => ({
       saveCollapsedGroupIds(next);
       return { collapsedGroupIds: next };
     }),
+
+  setArticleDrawerWidth: (width) => {
+    const normalized =
+      width === null
+        ? null
+        : typeof window !== "undefined"
+          ? clampArticleDrawerWidth(width, window.innerWidth)
+          : Math.max(ARTICLE_DRAWER_MIN_WIDTH, Math.round(width));
+    saveArticleDrawerWidth(normalized);
+    set({ articleDrawerWidth: normalized });
+  },
 }));

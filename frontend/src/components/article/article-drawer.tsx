@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Circle,
   CircleCheck,
@@ -46,8 +46,13 @@ import { cn, formatDate } from "@/lib/utils";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { FeedFavicon } from "@/components/feed/feed-favicon";
 import { toSafeExternalUrl } from "@/lib/safe-url";
-import { useReadStatePins, usePreferencesStore } from "@/store";
+import { useReadStatePins, usePreferencesStore, useUIStore } from "@/store";
 import { autoMarkReadDelayMs } from "@/store/preferences";
+import {
+  ARTICLE_DRAWER_EDGE_MARGIN,
+  ARTICLE_DRAWER_MIN_WIDTH,
+  clampArticleDrawerWidth,
+} from "@/store/ui";
 import type { ArticleViewMode } from "@/lib/translation";
 
 export function ArticleDrawer() {
@@ -266,6 +271,100 @@ export function ArticleDrawer() {
       onOpenOriginal: handleOpenOriginal,
     });
 
+  const articleDrawerWidth = useUIStore((s) => s.articleDrawerWidth);
+  const setArticleDrawerWidth = useUIStore((s) => s.setArticleDrawerWidth);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+    latestWidth: number;
+  } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove("article-drawer-resizing");
+    };
+  }, []);
+
+  const endResizeDrag = (
+    pointerId: number,
+    target: HTMLDivElement,
+    commit: boolean,
+  ) => {
+    const active = dragRef.current;
+    if (!active || active.pointerId !== pointerId) return;
+    dragRef.current = null;
+    if (target.hasPointerCapture(pointerId)) {
+      target.releasePointerCapture(pointerId);
+    }
+    document.body.classList.remove("article-drawer-resizing");
+    sheetRef.current?.style.removeProperty("--article-drawer-width");
+    setIsResizing(false);
+    if (commit) {
+      setArticleDrawerWidth(active.latestWidth);
+    }
+  };
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !sheetRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = sheetRef.current.getBoundingClientRect().width;
+    const clampedStart = clampArticleDrawerWidth(startWidth, window.innerWidth);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startWidth: clampedStart,
+      latestWidth: clampedStart,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.classList.add("article-drawer-resizing");
+    setIsResizing(true);
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const active = dragRef.current;
+    if (!active || active.pointerId !== e.pointerId || !sheetRef.current) return;
+    const nextWidth = clampArticleDrawerWidth(
+      active.startWidth + (active.startX - e.clientX),
+      window.innerWidth,
+    );
+    active.latestWidth = nextWidth;
+    sheetRef.current.style.setProperty(
+      "--article-drawer-width",
+      `${nextWidth}px`,
+    );
+  };
+
+  const handleResizeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Home") {
+      e.preventDefault();
+      sheetRef.current?.style.removeProperty("--article-drawer-width");
+      setArticleDrawerWidth(null);
+      return;
+    }
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const current =
+      articleDrawerWidth ??
+      sheetRef.current?.getBoundingClientRect().width ??
+      ARTICLE_DRAWER_MIN_WIDTH;
+    const step = e.key === "ArrowLeft" ? 24 : -24;
+    setArticleDrawerWidth(
+      clampArticleDrawerWidth(current + step, window.innerWidth),
+    );
+  };
+
+  const maxDrawerWidth =
+    typeof window !== "undefined"
+      ? Math.max(
+          ARTICLE_DRAWER_MIN_WIDTH,
+          window.innerWidth - ARTICLE_DRAWER_EDGE_MARGIN,
+        )
+      : 1440;
+
   return (
     <Sheet
       open={selectedArticleId !== null}
@@ -277,10 +376,47 @@ export function ArticleDrawer() {
       }}
     >
       <SheetContent
+        ref={sheetRef}
         side="right"
-        className="data-[side=right]:w-full data-[side=right]:sm:max-w-[max(840px,60vw)] p-0"
+        data-resizing={isResizing ? "true" : undefined}
+        style={
+          articleDrawerWidth !== null
+            ? ({
+                "--article-drawer-width": `${articleDrawerWidth}px`,
+              } as React.CSSProperties)
+            : undefined
+        }
+        className="article-drawer-sheet data-[side=right]:w-full p-0"
         showCloseButton={false}
       >
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-label={t("article.drawer.resize")}
+          aria-valuemin={ARTICLE_DRAWER_MIN_WIDTH}
+          aria-valuemax={maxDrawerWidth}
+          aria-valuenow={articleDrawerWidth ?? undefined}
+          data-resizing={isResizing ? "true" : undefined}
+          title={t("article.drawer.resizeHint")}
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={(e) => endResizeDrag(e.pointerId, e.currentTarget, true)}
+          onPointerCancel={(e) =>
+            endResizeDrag(e.pointerId, e.currentTarget, false)
+          }
+          onDoubleClick={() => {
+            sheetRef.current?.style.removeProperty("--article-drawer-width");
+            setArticleDrawerWidth(null);
+          }}
+          onKeyDown={handleResizeKeyDown}
+          className="group/resize absolute inset-y-0 -left-1.5 z-20 hidden w-3 cursor-col-resize touch-none select-none items-center justify-center sm:flex focus-visible:outline-none"
+        >
+          <span
+            aria-hidden="true"
+            className="h-full w-0.5 rounded-full bg-transparent transition-colors group-hover/resize:bg-primary/45 group-focus-visible/resize:bg-primary/60 group-data-[resizing=true]/resize:bg-primary"
+          />
+        </div>
         {displayedArticle ? (
           <div className="flex h-full flex-col">
             {/* Header */}

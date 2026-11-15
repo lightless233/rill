@@ -233,6 +233,8 @@ export const ruMessages: PartialMessages = {
   "article.action.original": "Оригинал",
   "article.action.star": "В избранное",
   "article.action.unstar": "Убрать",
+  "article.drawer.resize": "Изменить ширину панели чтения",
+  "article.drawer.resizeHint": "Потяните для изменения ширины, двойной клик — сброс",
   "article.action.translate": "Перевести",
   "article.action.summarize": "Резюме",
   "article.summary.collapse": "Свернуть резюме",

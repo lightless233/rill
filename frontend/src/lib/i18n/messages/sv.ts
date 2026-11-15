@@ -233,6 +233,8 @@ export const svMessages: PartialMessages = {
   "article.action.original": "Original",
   "article.action.star": "Stjarna",
   "article.action.unstar": "Ta bort",
+  "article.drawer.resize": "Ändra bredd på läspanelen",
+  "article.drawer.resizeHint": "Dra för att ändra bredd, dubbelklicka för att återställa",
   "article.action.translate": "Översätt",
   "article.action.summarize": "Sammanfatta",
   "article.summary.collapse": "Fäll ihop sammanfattning",

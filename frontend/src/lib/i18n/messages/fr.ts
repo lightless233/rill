@@ -233,6 +233,8 @@ export const frMessages: PartialMessages = {
   "article.action.original": "Article original",
   "article.action.star": "Favori",
   "article.action.unstar": "Retirer des favoris",
+  "article.drawer.resize": "Redimensionner le panneau de lecture",
+  "article.drawer.resizeHint": "Glisser pour ajuster la largeur, double-cliquer pour réinitialiser",
   "article.action.translate": "Traduire",
   "article.action.summarize": "Résumer",
   "article.summary.collapse": "Réduire le résumé",

@@ -233,6 +233,8 @@ export const ptMessages: PartialMessages = {
   "article.action.original": "Original",
   "article.action.star": "Favoritar",
   "article.action.unstar": "Remover",
+  "article.drawer.resize": "Redimensionar painel de leitura",
+  "article.drawer.resizeHint": "Arraste para ajustar a largura; clique duas vezes para redefinir",
   "article.action.translate": "Traduzir",
   "article.action.summarize": "Resumir",
   "article.summary.collapse": "Recolher resumo",
