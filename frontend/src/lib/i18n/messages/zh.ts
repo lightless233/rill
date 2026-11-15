@@ -231,6 +231,7 @@ export const zhMessages: PartialMessages = {
   "article.list.noArticles": "未找到文章",
   "article.list.noFeeds": "暂无订阅。前往订阅管理添加你的第一个订阅。",
   "article.list.openFeedManagement": "打开订阅管理",
+  "article.list.openWebsite": "打开原网站",
   "article.toast.markAllReadFailed": "全部标记为已读失败",
   "article.toast.markAllReadUndo": "已将「{scope}」{count} 篇标为已读",
   "article.toast.markLoadedReadFailed": "将已加载标为已读失败",

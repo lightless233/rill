@@ -182,5 +182,5 @@ func dialPinnedPublicAddr(ctx context.Context, resolver ipResolver, dialFn dialF
 
 // SetDefaultHeaders adds default headers required for feed fetching.
 func SetDefaultHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", "fusion/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Rill/1.0; +https://github.com/lightless233/rill)")
 }

@@ -231,6 +231,7 @@ export const ptMessages: PartialMessages = {
   "article.list.noArticles": "Nenhum artigo encontrado",
   "article.list.noFeeds": "Ainda nao ha feeds. Va para Gerenciamento de feeds para adicionar o primeiro.",
   "article.list.openFeedManagement": "Abrir gerenciamento de feeds",
+  "article.list.openWebsite": "Abrir site",
   "article.toast.markAllReadFailed": "Falha ao marcar todos os artigos como lidos",
   "article.toast.markAllReadUndo": '{count} artigos em "{scope}" marcados como lidos',
   "article.toast.markLoadedReadFailed": "Falha ao marcar os artigos carregados como lidos",

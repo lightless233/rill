@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, ChevronDown, Loader2 } from "lucide-react";
+import { CheckCheck, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ArticleItem } from "./article-item";
 import { ContentHeader } from "@/components/layout/content-header";
 import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
@@ -39,6 +45,8 @@ import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { useI18n } from "@/lib/i18n";
 import { shouldAutoFetchEmptyPage } from "@/lib/query-status";
+import { toSafeExternalUrl } from "@/lib/safe-url";
+import { cn } from "@/lib/utils";
 import {
   getScopeUnreadCount,
   resolveNextUnreadTarget,
@@ -157,12 +165,17 @@ export function ArticleList() {
     isLoadingMore,
   ]);
 
+  const selectedFeed =
+    selectedFeedId !== null ? getFeedById(selectedFeedId) : undefined;
+  const safeFeedSiteUrl = selectedFeed
+    ? toSafeExternalUrl(selectedFeed.site_url)
+    : null;
+
   let title = t("article.list.all");
   let scopeUnreadCount = feeds.reduce((sum, f) => sum + f.unread_count, 0);
   if (selectedFeedId !== null) {
-    const feed = getFeedById(selectedFeedId);
-    title = feed?.name ?? t("article.feedFallback");
-    scopeUnreadCount = feed?.unread_count ?? 0;
+    title = selectedFeed?.name ?? t("article.feedFallback");
+    scopeUnreadCount = selectedFeed?.unread_count ?? 0;
   } else if (selectedGroupId !== null) {
     const group = groups.find((g) => g.id === selectedGroupId);
     title = group?.name ?? t("article.groupFallback");
@@ -443,10 +456,35 @@ export function ArticleList() {
 
   return (
     <div className="flex h-full flex-col">
-      <ContentHeader>
-        <div className="flex min-w-0 items-center gap-1">
+      <ContentHeader className="gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
           <SidebarTrigger />
           <h2 className="truncate text-lg font-semibold">{title}</h2>
+          {safeFeedSiteUrl && (
+            <TooltipProvider delay={300}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <a
+                      href={safeFeedSiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={t("article.list.openWebsite")}
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                        "shrink-0 text-muted-foreground hover:text-foreground",
+                      )}
+                    />
+                  }
+                >
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t("article.list.openWebsite")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
         <div className="flex shrink-0 items-center">
           <Button

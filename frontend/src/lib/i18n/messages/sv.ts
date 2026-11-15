@@ -231,6 +231,7 @@ export const svMessages: PartialMessages = {
   "article.list.noArticles": "Inga artiklar hittades",
   "article.list.noFeeds": "Inga floden an. Ga till flodeshantering for att lagga till ditt forsta flode.",
   "article.list.openFeedManagement": "Oppna flodeshantering",
+  "article.list.openWebsite": "Öppna webbplats",
   "article.toast.markAllReadFailed": "Kunde inte markera alla artiklar som lästa",
   "article.toast.markAllReadUndo": '{count} artiklar i "{scope}" markerades som lästa',
   "article.toast.markLoadedReadFailed": "Kunde inte markera laddade artiklar som lästa",

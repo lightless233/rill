@@ -230,6 +230,7 @@ export const enMessages = {
   "article.list.noArticles": "No articles found",
   "article.list.noFeeds": "No feeds yet. Go to Feed Management to add your first feed.",
   "article.list.openFeedManagement": "Open Feed Management",
+  "article.list.openWebsite": "Open website",
   "article.toast.markAllReadFailed": "Failed to mark all articles as read",
   "article.toast.markAllReadUndo": 'Marked {count} articles in "{scope}" as read',
   "article.toast.markLoadedReadFailed": "Failed to mark loaded articles as read",

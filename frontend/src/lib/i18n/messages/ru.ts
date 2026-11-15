@@ -231,6 +231,7 @@ export const ruMessages: PartialMessages = {
   "article.list.noArticles": "Статьи не найдены",
   "article.list.noFeeds": "Лент пока нет. Перейдите в управление лентами, чтобы добавить первую.",
   "article.list.openFeedManagement": "Открыть управление лентами",
+  "article.list.openWebsite": "Открыть сайт",
   "article.toast.markAllReadFailed": "Не удалось отметить все статьи как прочитанные",
   "article.toast.markAllReadUndo": "{count} статей в «{scope}» отмечено как прочитанные",
   "article.toast.markLoadedReadFailed": "Не удалось отметить загруженные статьи как прочитанные",

@@ -231,6 +231,7 @@ export const frMessages: PartialMessages = {
   "article.list.noArticles": "Aucun article trouvé",
   "article.list.noFeeds": "Aucun flux. Allez dans la gestion des flux pour ajouter votre premier flux.",
   "article.list.openFeedManagement": "Ouvrir la gestion des flux",
+  "article.list.openWebsite": "Ouvrir le site",
   "article.toast.markAllReadFailed": "Échec du marquage de tous les articles comme lus",
   "article.toast.markAllReadUndo": "{count} articles de « {scope} » marqués comme lus",
   "article.toast.markLoadedReadFailed": "Échec du marquage des articles chargés comme lus",

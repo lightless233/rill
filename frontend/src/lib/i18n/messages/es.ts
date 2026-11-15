@@ -231,6 +231,7 @@ export const esMessages: PartialMessages = {
   "article.list.noArticles": "No se encontraron articulos",
   "article.list.noFeeds": "Aun no hay feeds. Ve a Gestion de feeds para agregar el primero.",
   "article.list.openFeedManagement": "Abrir gestion de feeds",
+  "article.list.openWebsite": "Abrir sitio web",
   "article.toast.markAllReadFailed": "No se pudieron marcar todos los artículos como leídos",
   "article.toast.markAllReadUndo": 'Se marcaron {count} artículos en "{scope}" como leídos',
   "article.toast.markLoadedReadFailed": "No se pudieron marcar los artículos cargados como leídos",

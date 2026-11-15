@@ -231,6 +231,7 @@ export const deMessages: PartialMessages = {
   "article.list.noArticles": "Keine Artikel gefunden",
   "article.list.noFeeds": "Noch keine Feeds. Gehen Sie zur Feed-Verwaltung und fugen Sie den ersten Feed hinzu.",
   "article.list.openFeedManagement": "Feed-Verwaltung offnen",
+  "article.list.openWebsite": "Website öffnen",
   "article.toast.markAllReadFailed": "Alle Artikel konnten nicht als gelesen markiert werden",
   "article.toast.markAllReadUndo": '{count} Artikel in "{scope}" als gelesen markiert',
   "article.toast.markLoadedReadFailed": "Geladene Artikel konnten nicht als gelesen markiert werden",
