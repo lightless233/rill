@@ -211,11 +211,11 @@ export function AddFeedDialog() {
     <>
       <Dialog open={isAddFeedOpen} onOpenChange={setAddFeedOpen}>
         <DialogContent
-          className="flex w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
+          className="flex max-h-[85vh] w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
           showCloseButton={false}
         >
           {/* Header */}
-          <DialogHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
+          <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b px-5 py-4">
             <DialogTitle className="text-base font-semibold">
               {t("feed.add.title")}
             </DialogTitle>
@@ -226,7 +226,7 @@ export function AddFeedDialog() {
           </DialogHeader>
 
           {/* Form Content */}
-          <div className="space-y-4 p-5">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
             {/* URL Section */}
             <div className="space-y-1.5">
               <label htmlFor="add-feed-url" className="text-[13px] font-medium">
@@ -368,7 +368,7 @@ export function AddFeedDialog() {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 border-t px-5 py-4">
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t px-5 py-4">
             <Button variant="outline" onClick={handleClose}>
               {t("common.cancel")}
             </Button>
@@ -393,10 +393,10 @@ export function AddFeedDialog() {
         }}
       >
         <DialogContent
-          className="w-full max-w-[560px] p-0"
+          className="flex max-h-[85vh] w-full max-w-[560px] flex-col gap-0 overflow-hidden p-0"
           showCloseButton={false}
         >
-          <DialogHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
+          <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b px-5 py-4">
             <div>
               <DialogTitle className="text-base font-semibold">
                 {t("feed.select.title")}
@@ -418,7 +418,7 @@ export function AddFeedDialog() {
             </Button>
           </DialogHeader>
 
-          <div className="max-h-[360px] space-y-2 overflow-y-auto p-4">
+          <div className="min-h-0 max-h-[360px] flex-1 space-y-2 overflow-y-auto p-4">
             {detectedFeeds.map((feed, index) => (
               <button
                 key={`${feed.link}-${index}`}

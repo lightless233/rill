@@ -175,10 +175,10 @@ export function ImportOpmlDialog() {
   return (
     <Dialog open={isImportOpmlOpen} onOpenChange={setImportOpmlOpen}>
       <DialogContent
-        className="flex w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[85vh] w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
         showCloseButton={false}
       >
-        <DialogHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b px-5 py-4">
           <DialogTitle className="text-base font-semibold">
             {t("opml.dialog.title")}
           </DialogTitle>
@@ -188,7 +188,7 @@ export function ImportOpmlDialog() {
           </Button>
         </DialogHeader>
 
-        <div className="p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <input
             ref={fileInputRef}
             id={fileInputId}
@@ -246,7 +246,7 @@ export function ImportOpmlDialog() {
           </label>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t px-5 py-4">
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t px-5 py-4">
           <Button variant="outline" onClick={handleClose}>
             {t("common.cancel")}
           </Button>

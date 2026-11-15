@@ -17,7 +17,14 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
-        {children}
+        {/* Base UI only observes dynamic content resizes via ScrollArea.Content; override its default minWidth: 'fit-content' so truncate/min-w-0 layouts stay bounded to the viewport width. */}
+        <ScrollAreaPrimitive.Content
+          data-slot="scroll-area-content"
+          className="w-full min-w-0"
+          style={{ minWidth: 0 }}
+        >
+          {children}
+        </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
       <ScrollAreaPrimitive.Corner />

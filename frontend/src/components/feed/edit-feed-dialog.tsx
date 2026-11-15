@@ -205,12 +205,12 @@ function EditFeedDialogForm({
         onOpenChange={onOpenChange}
       >
         <DialogContent
-          className="flex w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
+          className="flex max-h-[85vh] w-full max-w-[480px] flex-col gap-0 overflow-hidden p-0"
           showCloseButton={false}
           initialFocus={urlInputRef}
         >
           {/* Header */}
-          <DialogHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
+          <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b px-5 py-4">
             <DialogTitle className="flex items-center gap-1.5 text-base font-semibold">
               <span>{t("feed.edit.title")}</span>
               {editingFeed?.fetch_state.last_error && (
@@ -252,7 +252,7 @@ function EditFeedDialogForm({
           </DialogHeader>
 
           {/* Form Content */}
-          <div className="space-y-4 p-5">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
             {/* URL Section */}
             <div className="space-y-1.5">
               <label htmlFor="edit-feed-url" className="text-[13px] font-medium">
@@ -396,7 +396,7 @@ function EditFeedDialogForm({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between border-t px-5 py-4">
             <Button
               variant="ghost"
               size="sm"
