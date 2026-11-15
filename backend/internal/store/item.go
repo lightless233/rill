@@ -257,19 +257,45 @@ func (s *Store) batchUpdateItemsUnreadChunk(ids []int64, unread bool) error {
 	return err
 }
 
-// MarkAllAsRead marks items as read. If feedID is nil, marks ALL items across all feeds.
-// If feedID is non-nil, only marks items from that specific feed.
-func (s *Store) MarkAllAsRead(feedID *int64) error {
-	if feedID != nil {
-		_, err := s.db.Exec(`UPDATE items SET unread = 0 WHERE feed_id = :feed_id AND unread = 1`, sql.Named("feed_id", *feedID))
-		return err
+func scanItemIDs(rows *sql.Rows) ([]int64, error) {
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
 	}
-	_, err := s.db.Exec(`UPDATE items SET unread = 0 WHERE unread = 1`)
-	return err
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
-func (s *Store) MarkGroupAsRead(groupID int64) error {
-	_, err := s.db.Exec(`
+// MarkAllAsRead marks unread items as read and returns the affected item IDs.
+// If feedID is nil, marks ALL unread items across all feeds.
+func (s *Store) MarkAllAsRead(feedID *int64) ([]int64, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if feedID != nil {
+		rows, err = s.db.Query(
+			`UPDATE items SET unread = 0 WHERE feed_id = :feed_id AND unread = 1 RETURNING id`,
+			sql.Named("feed_id", *feedID),
+		)
+	} else {
+		rows, err = s.db.Query(`UPDATE items SET unread = 0 WHERE unread = 1 RETURNING id`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanItemIDs(rows)
+}
+
+func (s *Store) MarkGroupAsRead(groupID int64) ([]int64, error) {
+	rows, err := s.db.Query(`
 		UPDATE items
 		SET unread = 0
 		WHERE unread = 1
@@ -278,8 +304,13 @@ func (s *Store) MarkGroupAsRead(groupID int64) error {
 			FROM feeds
 			WHERE group_id = :group_id
 		)
+		RETURNING id
 	`, sql.Named("group_id", groupID))
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanItemIDs(rows)
 }
 
 func (s *Store) MarkFeedAsReadBefore(feedID, before int64) error {

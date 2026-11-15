@@ -394,6 +394,98 @@ export function buildMarkAllItemsReadPayload(
   return {};
 }
 
+function patchItemListsUnread(
+  qc: QueryClient,
+  transform: (item: Item) => boolean | undefined,
+) {
+  qc.setQueriesData<ItemsInfiniteData>(
+    { queryKey: queryKeys.items.lists() },
+    (old) => {
+      if (!old) return old;
+      let changed = false;
+      const pages = old.pages.map((page) => {
+        let pageChanged = false;
+        const data = page.data.map((item) => {
+          const nextUnread = transform(item);
+          if (nextUnread === undefined || item.unread === nextUnread) {
+            return item;
+          }
+          pageChanged = true;
+          return { ...item, unread: nextUnread };
+        });
+        if (!pageChanged) return page;
+        changed = true;
+        return { ...page, data };
+      });
+      return changed ? { ...old, pages } : old;
+    },
+  );
+}
+
+function patchBookmarkListsUnread(
+  qc: QueryClient,
+  transform: (bookmark: BookmarksInfiniteData["pages"][number]["data"][number]) => boolean | undefined,
+) {
+  qc.setQueriesData<BookmarksInfiniteData>(
+    { queryKey: queryKeys.bookmarks.lists() },
+    (old) => {
+      if (!old) return old;
+      let changed = false;
+      const pages = old.pages.map((page) => {
+        let pageChanged = false;
+        const data = page.data.map((bookmark) => {
+          const nextUnread = transform(bookmark);
+          if (nextUnread === undefined || bookmark.unread === nextUnread) {
+            return bookmark;
+          }
+          pageChanged = true;
+          return { ...bookmark, unread: nextUnread };
+        });
+        if (!pageChanged) return page;
+        changed = true;
+        return { ...page, data };
+      });
+      return changed ? { ...old, pages } : old;
+    },
+  );
+}
+
+export function applyScopeMarkAllReadCache(
+  qc: QueryClient,
+  scope: MarkAllItemsReadRequest,
+  affectedIds: number[],
+) {
+  markAllEpochs.set(qc, getMarkAllEpoch(qc) + 1);
+
+  qc.setQueryData(queryKeys.feeds.list(), (old: Feed[] | undefined) =>
+    old?.map((feed) => {
+      const matches =
+        scope.feed_id !== undefined
+          ? feed.id === scope.feed_id
+          : scope.group_id !== undefined
+            ? feed.group_id === scope.group_id
+            : true;
+      if (!matches || feed.unread_count === 0) return feed;
+      return { ...feed, unread_count: 0 };
+    }),
+  );
+
+  if (affectedIds.length === 0) {
+    return;
+  }
+
+  const idSet = new Set(affectedIds);
+  patchItemListsUnread(qc, (item) => (idSet.has(item.id) ? false : undefined));
+  for (const id of affectedIds) {
+    qc.setQueryData<Item>(queryKeys.items.detail(id), (old) =>
+      old && old.unread ? { ...old, unread: false } : old,
+    );
+  }
+  patchBookmarkListsUnread(qc, (bookmark) =>
+    bookmark.item_id != null && idSet.has(bookmark.item_id) ? false : undefined,
+  );
+}
+
 export async function invalidateAfterMarkAllRead(qc: QueryClient) {
   markAllEpochs.set(qc, getMarkAllEpoch(qc) + 1);
   await Promise.all([
@@ -415,7 +507,13 @@ export function useMarkAllItemsRead() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: MarkAllItemsReadRequest) => itemAPI.markAllRead(data),
-    onSuccess: () => invalidateAfterMarkAllRead(qc),
+    mutationFn: async (data: MarkAllItemsReadRequest) => {
+      const res = await itemAPI.markAllRead(data);
+      return res.data?.affected_ids ?? [];
+    },
+    onSuccess: (affectedIds, scope) => {
+      applyScopeMarkAllReadCache(qc, scope, affectedIds);
+      void invalidateAfterMarkAllRead(qc);
+    },
   });
 }

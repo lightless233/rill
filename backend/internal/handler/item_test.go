@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -228,10 +229,30 @@ func TestMarkAllItemsRead(t *testing.T) {
 		}
 	})
 
+	parseAffectedIDs := func(t *testing.T, body []byte) []int64 {
+		t.Helper()
+		var resp struct {
+			Data struct {
+				AffectedIDs []int64 `json:"affected_ids"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			t.Fatalf("unmarshal response (%s): %v", string(body), err)
+		}
+		if resp.Data.AffectedIDs == nil {
+			t.Fatalf("expected non-nil affected_ids slice in %s", string(body))
+		}
+		slices.Sort(resp.Data.AffectedIDs)
+		return resp.Data.AffectedIDs
+	}
+
 	t.Run("feed scope", func(t *testing.T) {
 		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{"feed_id": feed1.ID}), jsonHeaders)
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d (%s)", w.Code, w.Body.String())
+		}
+		if ids := parseAffectedIDs(t, w.Body.Bytes()); !slices.Equal(ids, []int64{item1.ID}) {
+			t.Fatalf("feed scope affected_ids = %v, want [%d]", ids, item1.ID)
 		}
 		assertUnread(t, item1.ID, false)
 		assertUnread(t, item2.ID, true)
@@ -240,19 +261,25 @@ func TestMarkAllItemsRead(t *testing.T) {
 
 	t.Run("group scope", func(t *testing.T) {
 		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{"group_id": group1.ID}), jsonHeaders)
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d (%s)", w.Code, w.Body.String())
+		}
+		if ids := parseAffectedIDs(t, w.Body.Bytes()); !slices.Equal(ids, []int64{item2.ID}) {
+			t.Fatalf("group scope affected_ids = %v, want [%d]", ids, item2.ID)
 		}
 		assertUnread(t, item1.ID, false)
 		assertUnread(t, item2.ID, false)
 		assertUnread(t, item3.ID, true)
 	})
 
-	t.Run("non-existent scopes are idempotent 204", func(t *testing.T) {
+	t.Run("non-existent scopes are idempotent 200 with empty slice", func(t *testing.T) {
 		for _, payload := range []map[string]any{{"feed_id": 999999}, {"group_id": 999999}} {
 			w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, payload), jsonHeaders)
-			if w.Code != http.StatusNoContent {
-				t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d (%s)", w.Code, w.Body.String())
+			}
+			if ids := parseAffectedIDs(t, w.Body.Bytes()); len(ids) != 0 {
+				t.Fatalf("expected empty affected_ids, got %v", ids)
 			}
 		}
 		assertUnread(t, item3.ID, true)
@@ -260,8 +287,11 @@ func TestMarkAllItemsRead(t *testing.T) {
 
 	t.Run("global scope", func(t *testing.T) {
 		w := performRequest(r, http.MethodPatch, "/api/items/-/read-all", mustJSONBody(t, map[string]any{}), jsonHeaders)
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("expected status 204, got %d (%s)", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d (%s)", w.Code, w.Body.String())
+		}
+		if ids := parseAffectedIDs(t, w.Body.Bytes()); !slices.Equal(ids, []int64{item3.ID}) {
+			t.Fatalf("global scope affected_ids = %v, want [%d]", ids, item3.ID)
 		}
 		assertUnread(t, item1.ID, false)
 		assertUnread(t, item2.ID, false)

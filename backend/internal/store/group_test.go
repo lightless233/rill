@@ -180,3 +180,57 @@ func TestDeleteGroup(t *testing.T) {
 		}
 	})
 }
+
+func TestReorderGroups(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	g1 := mustCreateGroup(t, store, "Alpha")
+	g2 := mustCreateGroup(t, store, "Beta")
+
+	t.Run("reorders groups and appends newly created groups at the end", func(t *testing.T) {
+		if err := store.ReorderGroups([]int64{g2.ID, 1, g1.ID}); err != nil {
+			t.Fatalf("ReorderGroups() failed: %v", err)
+		}
+
+		groups, err := store.ListGroups()
+		if err != nil {
+			t.Fatalf("ListGroups() failed: %v", err)
+		}
+
+		gotOrder := []int64{groups[0].ID, groups[1].ID, groups[2].ID}
+		wantOrder := []int64{g2.ID, 1, g1.ID}
+		for i := range wantOrder {
+			if gotOrder[i] != wantOrder[i] {
+				t.Fatalf("ordered IDs = %v, want %v", gotOrder, wantOrder)
+			}
+			if groups[i].SortOrder != int64(i+1) {
+				t.Fatalf("groups[%d].SortOrder = %d, want %d", i, groups[i].SortOrder, i+1)
+			}
+		}
+
+		g3 := mustCreateGroup(t, store, "Gamma")
+		groups, err = store.ListGroups()
+		if err != nil {
+			t.Fatalf("ListGroups() after CreateGroup failed: %v", err)
+		}
+		if groups[len(groups)-1].ID != g3.ID {
+			t.Fatalf("expected newly created group %d at end, got %d", g3.ID, groups[len(groups)-1].ID)
+		}
+	})
+
+	t.Run("rejects empty, invalid, duplicate, and unknown IDs", func(t *testing.T) {
+		if err := store.ReorderGroups([]int64{}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("empty slice: got %v, want ErrInvalid", err)
+		}
+		if err := store.ReorderGroups([]int64{0, 1}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("non-positive id: got %v, want ErrInvalid", err)
+		}
+		if err := store.ReorderGroups([]int64{1, 1}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("duplicate id: got %v, want ErrInvalid", err)
+		}
+		if err := store.ReorderGroups([]int64{99999}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("unknown id: got %v, want ErrNotFound", err)
+		}
+	})
+}

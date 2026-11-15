@@ -147,3 +147,91 @@
   --typeset-leading: 1.75;
   --typeset-flow: 1.25em;
 }
+
+.group-reorder-dragging,
+.group-reorder-dragging * {
+  cursor: grabbing !important;
+}
+
+.group-drag-handle {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+}
+
+.group-drag-handle[aria-pressed="true"] {
+  cursor: grabbing;
+}
+
+.group-reorder-item {
+  scroll-margin: 1rem;
+}
+
+.group-reorder-item[data-dragging="true"] {
+  position: relative;
+  z-index: 30;
+  scale: 1.01;
+  border-radius: var(--radius-md);
+  background-color: var(--sidebar);
+  box-shadow: 0 6px 16px -4px rgb(0 0 0 / 0.18), 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+
+.group-reorder-item[data-settling="true"] {
+  position: relative;
+  z-index: 30;
+}
+
+.group-reorder-item[data-grabbed="true"] {
+  position: relative;
+  z-index: 25;
+  border-radius: var(--radius-md);
+  background-color: var(--sidebar-accent);
+  box-shadow: 0 4px 12px -4px rgb(0 0 0 / 0.16);
+}
+
+.group-reorder-item:has([data-drag-handle]:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-md);
+}
+
+.group-reorder-list {
+  --drop-marker-color: var(--primary);
+  --drop-line-size: 2px;
+  --drop-ring-size: 7px;
+}
+
+.group-reorder-list[data-drop="true"]::before,
+.group-reorder-list[data-drop="true"]::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.group-reorder-list[data-drop="true"]::before {
+  left: calc(var(--drop-x) - var(--drop-ring-size) / 2);
+  top: calc(var(--drop-y) - var(--drop-ring-size) / 2);
+  width: var(--drop-ring-size);
+  height: var(--drop-ring-size);
+  border-radius: 9999px;
+  border: 2px solid var(--drop-marker-color);
+  background-color: var(--sidebar);
+}
+
+.group-reorder-list[data-drop="true"]::after {
+  left: calc(var(--drop-x) + var(--drop-ring-size) / 2 - 1px);
+  top: calc(var(--drop-y) - var(--drop-line-size) / 2);
+  width: max(0px, calc(var(--drop-w) - var(--drop-ring-size) / 2 + 1px));
+  height: var(--drop-line-size);
+  border-radius: 9999px;
+  background-color: var(--drop-marker-color);
+}
+
+@media (forced-colors: active) {
+  .group-reorder-list {
+    --drop-marker-color: Highlight;
+  }
+}

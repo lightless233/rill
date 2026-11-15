@@ -2,6 +2,7 @@
 export interface Group {
   id: number;
   name: string;
+  sort_order: number;
   created_at: number;
   updated_at: number;
 }
@@ -114,6 +115,10 @@ export interface UpdateGroupRequest {
   name: string;
 }
 
+export interface ReorderGroupsRequest {
+  group_ids: number[];
+}
+
 export interface CreateFeedRequest {
   group_id: number;
   name: string;
@@ -167,6 +172,10 @@ export interface MarkItemsReadRequest {
 export interface MarkAllItemsReadRequest {
   feed_id?: number;
   group_id?: number;
+}
+
+export interface MarkAllItemsReadResponse {
+  affected_ids: number[];
 }
 
 export interface ListItemsParams {

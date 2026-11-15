@@ -125,6 +125,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 		{
 			auth.GET("/groups", h.listGroups)
 			auth.POST("/groups", h.createGroup)
+			auth.PATCH("/groups/-/order", h.reorderGroups)
 			auth.GET("/groups/:id", h.getGroup)
 			auth.PATCH("/groups/:id", h.updateGroup)
 			auth.DELETE("/groups/:id", h.deleteGroup)

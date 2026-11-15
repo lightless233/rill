@@ -1,5 +1,6 @@
 import {
   queryOptions,
+  type QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
@@ -64,6 +65,43 @@ export function useDeleteGroup() {
         old?.filter((g) => g.id !== id),
       );
       qc.invalidateQueries({ queryKey: queryKeys.feeds.all });
+    },
+  });
+}
+
+const groupReorderEpochs = new WeakMap<QueryClient, number>();
+
+export function useReorderGroups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderedGroups: Group[]) => {
+      const res = await groupAPI.reorder({
+        group_ids: orderedGroups.map((g) => g.id),
+      });
+      return res.data;
+    },
+    onMutate: async (orderedGroups) => {
+      const epoch = (groupReorderEpochs.get(qc) ?? 0) + 1;
+      groupReorderEpochs.set(qc, epoch);
+      await qc.cancelQueries({ queryKey: queryKeys.groups.list() });
+      const previousGroups = qc.getQueryData<Group[]>(queryKeys.groups.list());
+      qc.setQueryData(queryKeys.groups.list(), orderedGroups);
+      return { previousGroups, epoch };
+    },
+    onError: (_err, _vars, context) => {
+      if (!context || context.epoch !== groupReorderEpochs.get(qc)) {
+        return;
+      }
+      if (context.previousGroups !== undefined) {
+        qc.setQueryData(queryKeys.groups.list(), context.previousGroups);
+      }
+      void qc.invalidateQueries({ queryKey: queryKeys.groups.list() });
+    },
+    onSuccess: (serverGroups, _vars, context) => {
+      if (!context || context.epoch !== groupReorderEpochs.get(qc)) {
+        return;
+      }
+      qc.setQueryData(queryKeys.groups.list(), serverGroups);
     },
   });
 }

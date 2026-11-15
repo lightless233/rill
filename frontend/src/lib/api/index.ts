@@ -10,12 +10,14 @@ import type {
   Bookmark,
   CreateGroupRequest,
   UpdateGroupRequest,
+  ReorderGroupsRequest,
   CreateFeedRequest,
   UpdateFeedRequest,
   ValidateFeedRequest,
   ValidateFeedResponse,
   CreateBookmarkRequest,
   MarkAllItemsReadRequest,
+  MarkAllItemsReadResponse,
   MarkItemsReadRequest,
   ListItemsParams,
   ListBookmarksParams,
@@ -57,6 +59,9 @@ export const groupAPI = {
 
   update: (id: number, data: UpdateGroupRequest) =>
     api.patch<APIResponse<Group>>(`/groups/${id}`, data),
+
+  reorder: (data: ReorderGroupsRequest) =>
+    api.patch<ListResponse<Group>>("/groups/-/order", data),
 
   delete: (id: number) => api.delete<void>(`/groups/${id}`),
 };
@@ -108,7 +113,7 @@ export const itemAPI = {
     api.patch<void>("/items/-/read", data),
 
   markAllRead: (data: MarkAllItemsReadRequest) =>
-    api.patch<void>("/items/-/read-all", data),
+    api.patch<APIResponse<MarkAllItemsReadResponse>>("/items/-/read-all", data),
 
   markUnread: (data: MarkItemsReadRequest) =>
     api.patch<void>("/items/-/unread", data),

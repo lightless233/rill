@@ -164,6 +164,7 @@ export function useUrlState() {
     selectedGroupId,
     selectedArticleId,
     articleFilter,
+    navigateToList,
     setSelectedFeed,
     setSelectedGroup,
     setSelectedArticle,

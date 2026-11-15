@@ -13,6 +13,10 @@ type groupRequest struct {
 	Name string `json:"name" binding:"required"`
 }
 
+type reorderGroupsRequest struct {
+	GroupIDs []int64 `json:"group_ids" binding:"required"`
+}
+
 func (h *Handler) listGroups(c *gin.Context) {
 	groups, err := h.store.ListGroups()
 	if err != nil {
@@ -115,4 +119,33 @@ func (h *Handler) deleteGroup(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) reorderGroups(c *gin.Context) {
+	var req reorderGroupsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequestError(c, "invalid request")
+		return
+	}
+
+	if err := h.store.ReorderGroups(req.GroupIDs); err != nil {
+		if errors.Is(err, store.ErrInvalid) {
+			badRequestError(c, err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			notFoundError(c, "group")
+			return
+		}
+		internalError(c, err, "reorder groups")
+		return
+	}
+
+	groups, err := h.store.ListGroups()
+	if err != nil {
+		internalError(c, err, "list groups after reorder")
+		return
+	}
+
+	listResponse(c, groups, len(groups))
 }

@@ -66,7 +66,7 @@ Three cases return the status with an empty body instead: unknown routes
 ## Status codes
 
 - `200` — any response with a body: reads, creates, and updates
-- `204` — body-less success: mark items read/unread, all deletes, logout,
+- `204` — body-less success: batch mark items read/unread (`-/read`, `-/unread`), all deletes, logout,
   and the `GET /api/sessions` validity probe (valid → 204, invalid → 401)
 - `202` — feed refresh requests (`/feeds/refresh`, `/feeds/{id}/refresh`):
   refresh happens asynchronously, no body
@@ -80,7 +80,9 @@ Three cases return the status with an empty body instead: unknown routes
 - `PATCH /api/items/-/read` and `-/unread` accept 1–1000 ids
   (`maxBatchUpdateIDs`).
 - `PATCH /api/items/-/read-all` marks all unread items as read, optionally scoped
-  by mutually exclusive `feed_id` or `group_id` (passing both returns `400`).
+  by mutually exclusive `feed_id` or `group_id` (passing both returns `400`),
+  and returns `200` with `{"data": {"affected_ids": [...]}}` listing the items
+  whose `unread` state changed from `true` to `false`.
 - `refresh_interval_seconds` (create and update feed): on **create**, absent
   or `0` means "use the global interval" (stored as `NULL`, never as `0`);
   on **update**, absent or `null` leaves the stored value unchanged and `0`

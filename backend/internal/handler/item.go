@@ -22,6 +22,10 @@ type markAllItemsReadRequest struct {
 	GroupID *int64 `json:"group_id"`
 }
 
+type markAllItemsReadResponse struct {
+	AffectedIDs []int64 `json:"affected_ids"`
+}
+
 func (h *Handler) listItems(c *gin.Context) {
 	params := store.ListItemsParams{}
 
@@ -168,19 +172,25 @@ func (h *Handler) markAllItemsRead(c *gin.Context) {
 		return
 	}
 
+	var (
+		ids []int64
+		err error
+	)
 	if req.GroupID != nil {
-		if err := h.store.MarkGroupAsRead(*req.GroupID); err != nil {
+		ids, err = h.store.MarkGroupAsRead(*req.GroupID)
+		if err != nil {
 			internalError(c, err, "mark group items as read")
 			return
 		}
 	} else {
-		if err := h.store.MarkAllAsRead(req.FeedID); err != nil {
+		ids, err = h.store.MarkAllAsRead(req.FeedID)
+		if err != nil {
 			internalError(c, err, "mark all items as read")
 			return
 		}
 	}
 
-	c.Status(http.StatusNoContent)
+	dataResponse(c, markAllItemsReadResponse{AffectedIDs: ids})
 }
 
 func (h *Handler) markItemsUnread(c *gin.Context) {

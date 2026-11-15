@@ -4,6 +4,7 @@ package model
 type Group struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
+	SortOrder int64  `json:"sort_order"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 }

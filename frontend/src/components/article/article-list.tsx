@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,23 +32,38 @@ import {
   useMarkItemsRead,
   useMarkItemsUnread,
 } from "@/queries/items";
+import { queryKeys } from "@/queries/keys";
 import { useFeedLookup } from "@/queries/feeds";
 import { useGroups } from "@/queries/groups";
 import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { useI18n } from "@/lib/i18n";
 import { shouldAutoFetchEmptyPage } from "@/lib/query-status";
+import {
+  getScopeUnreadCount,
+  resolveNextUnreadTarget,
+  type UnreadNavigationTarget,
+} from "@/lib/unread-navigation";
 import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import {
   articleListKey,
   useArticlePinsStore,
   useReadStatePins,
 } from "@/store";
-import type { Item } from "@/lib/api";
+import type { Feed, Item } from "@/lib/api";
+
+const MARK_READ_UNDO_DURATION_MS = 10_000;
+
+type MarkReadOrigin = {
+  feedId: number | null;
+  groupId: number | null;
+  filter: ArticleFilter;
+};
 
 export function ArticleList() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const {
     articleFilter,
     setArticleFilter,
@@ -55,6 +71,7 @@ export function ArticleList() {
     selectedGroupId,
     selectedArticleId,
     setSelectedArticle,
+    navigateToList,
   } = useUrlState();
 
   const {
@@ -78,6 +95,7 @@ export function ArticleList() {
     feeds,
     getFeedById,
     isLoading: isFeedsLoading,
+    isSuccess: isFeedsSuccess,
     isError: isFeedsError,
     refetch: refetchFeeds,
   } = useFeedLookup();
@@ -207,6 +225,85 @@ export function ArticleList() {
     [createBookmark, deleteBookmark, getBookmarkByItemId, t],
   );
 
+  const applyTargetNavigation = (target: UnreadNavigationTarget) => {
+    if (target.kind === "feed") {
+      navigateToList({
+        feedId: target.feedId,
+        groupId: null,
+        filter: "unread",
+        articleId: null,
+      });
+    } else if (target.kind === "group") {
+      navigateToList({
+        groupId: target.groupId,
+        feedId: null,
+        filter: "unread",
+        articleId: null,
+      });
+    } else {
+      navigateToList({
+        feedId: null,
+        groupId: null,
+        filter: "all",
+        articleId: null,
+      });
+    }
+  };
+
+  const showMarkReadUndoToast = ({
+    message,
+    ids,
+    origin,
+    didAdvance,
+    restorePinsKey,
+  }: {
+    message: string;
+    ids: number[];
+    origin: MarkReadOrigin;
+    didAdvance: boolean;
+    restorePinsKey?: string;
+  }) => {
+    if (ids.length === 0) return;
+    let undoPending = false;
+    toast.success(message, {
+      duration: MARK_READ_UNDO_DURATION_MS,
+      action: {
+        label: t("article.toast.undo"),
+        onClick: () => {
+          if (undoPending) return;
+          undoPending = true;
+          void (async () => {
+            try {
+              await markItemsUnread.mutateAsync(ids);
+              if (restorePinsKey) {
+                useArticlePinsStore
+                  .getState()
+                  .unpinItems(restorePinsKey, ids);
+              } else {
+                await Promise.all([
+                  qc.invalidateQueries({ queryKey: queryKeys.items.all }),
+                  qc.invalidateQueries({ queryKey: queryKeys.bookmarks.lists() }),
+                ]);
+              }
+              if (didAdvance) {
+                navigateToList({
+                  feedId: origin.feedId,
+                  groupId: origin.groupId,
+                  filter: origin.filter,
+                  articleId: null,
+                });
+              }
+            } catch (error) {
+              undoPending = false;
+              console.error("Failed to undo mark as read:", error);
+              toast.error(t("article.toast.undoFailed"));
+            }
+          })();
+        },
+      },
+    });
+  };
+
   const handleMarkLoadedAsRead = async () => {
     const unreadIds = articles
       .filter((a) => a.unread && a.id > 0)
@@ -214,11 +311,57 @@ export function ArticleList() {
 
     if (unreadIds.length === 0) return;
 
+    const origin: MarkReadOrigin = {
+      feedId: selectedFeedId,
+      groupId: selectedGroupId,
+      filter: articleFilter,
+    };
+    const beforeFeeds = feeds;
+
     // Pin before the request so optimistic updates do not temporarily empty
     // the list and trigger shouldAutoFetchEmptyPage before pins land.
     pinRead(unreadIds);
     try {
       await markItemsRead.mutateAsync(unreadIds);
+
+      const afterFeeds =
+        qc.getQueryData<Feed[]>(queryKeys.feeds.list()) ?? beforeFeeds;
+      const remainingScopeUnread = getScopeUnreadCount(
+        afterFeeds,
+        selectedFeedId,
+        selectedGroupId,
+      );
+      const nextTarget =
+        articleFilter === "unread" &&
+        (selectedFeedId !== null || selectedGroupId !== null) &&
+        remainingScopeUnread === 0
+          ? resolveNextUnreadTarget({
+              groups,
+              beforeFeeds,
+              afterFeeds,
+              isFeedsSuccess,
+              isFeedsError,
+              selectedFeedId,
+              selectedGroupId,
+              articleFilter,
+            })
+          : null;
+
+      const didAdvance = nextTarget !== null;
+      if (didAdvance) {
+        clearPins(pinsKey);
+        applyTargetNavigation(nextTarget);
+      }
+
+      showMarkReadUndoToast({
+        message: t("article.toast.markLoadedReadUndo", {
+          count: unreadIds.length,
+        }),
+        ids: unreadIds,
+        origin,
+        didAdvance,
+        restorePinsKey: didAdvance ? undefined : pinsKey,
+      });
     } catch (error) {
       unpinRead(unreadIds);
       console.error("Failed to mark loaded items as read:", error);
@@ -226,17 +369,76 @@ export function ArticleList() {
     }
   };
 
-  const handleConfirmMarkAllAsRead = async () => {
+  const executeMarkAllAsRead = async () => {
+    const origin: MarkReadOrigin = {
+      feedId: selectedFeedId,
+      groupId: selectedGroupId,
+      filter: articleFilter,
+    };
+    const scopeTitle = title;
+    const beforeFeeds = feeds;
+    const isScopedUnread =
+      articleFilter === "unread" &&
+      (selectedFeedId !== null || selectedGroupId !== null);
+    const currentUnreadIds = isScopedUnread
+      ? articles.filter((a) => a.unread && a.id > 0).map((a) => a.id)
+      : [];
+
+    if (isScopedUnread && currentUnreadIds.length > 0) {
+      // Keep rows pinned while the request settles so scoped feeds/groups do
+      // not briefly flash an empty state before auto-advancing.
+      pinRead(currentUnreadIds);
+    }
+
     try {
-      await markAllItemsRead.mutateAsync(
+      const affectedIds = await markAllItemsRead.mutateAsync(
         buildMarkAllItemsReadPayload(selectedFeedId, selectedGroupId),
       );
-      clearPins(pinsKey);
       setMarkAllConfirmOpen(false);
+
+      const afterFeeds =
+        qc.getQueryData<Feed[]>(queryKeys.feeds.list()) ?? beforeFeeds;
+      const nextTarget = resolveNextUnreadTarget({
+        groups,
+        beforeFeeds,
+        afterFeeds,
+        isFeedsSuccess,
+        isFeedsError,
+        selectedFeedId,
+        selectedGroupId,
+        articleFilter,
+      });
+
+      if (nextTarget) {
+        applyTargetNavigation(nextTarget);
+      } else {
+        clearPins(pinsKey);
+      }
+
+      showMarkReadUndoToast({
+        message: t("article.toast.markAllReadUndo", {
+          scope: scopeTitle,
+          count: affectedIds.length,
+        }),
+        ids: affectedIds,
+        origin,
+        didAdvance: nextTarget !== null,
+      });
     } catch (error) {
+      if (isScopedUnread && currentUnreadIds.length > 0) {
+        unpinRead(currentUnreadIds);
+      }
       console.error("Failed to mark all as read:", error);
       toast.error(t("article.toast.markAllReadFailed"));
     }
+  };
+
+  const handleMarkAllButtonClick = () => {
+    if (selectedFeedId === null && selectedGroupId === null) {
+      setMarkAllConfirmOpen(true);
+      return;
+    }
+    void executeMarkAllAsRead();
   };
 
   return (
@@ -250,7 +452,7 @@ export function ArticleList() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setMarkAllConfirmOpen(true)}
+            onClick={handleMarkAllButtonClick}
             disabled={!canMarkAllRead || isMarkingRead}
             className="gap-1.5 rounded-r-none text-xs focus-visible:z-10"
           >
@@ -439,7 +641,7 @@ export function ArticleList() {
             </Button>
             <Button
               disabled={markAllItemsRead.isPending}
-              onClick={handleConfirmMarkAllAsRead}
+              onClick={executeMarkAllAsRead}
             >
               {markAllItemsRead.isPending
                 ? t("article.list.markAllDialog.confirming")

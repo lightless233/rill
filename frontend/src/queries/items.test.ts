@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Bookmark, Feed, Item } from "@/lib/api";
 import { updateItemsBookmarkCache, type BookmarksInfiniteData } from "./bookmarks";
 import {
+  applyScopeMarkAllReadCache,
   beginItemsReadStateOptimisticUpdate,
   buildMarkAllItemsReadPayload,
   invalidateAfterMarkAllRead,
@@ -211,5 +212,37 @@ describe("mark all items read helpers", () => {
     expect(qc.getQueryState(detailKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(feedsKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(bookmarksKey)?.isInvalidated).toBe(true);
+  });
+
+  it("updates feeds unread counts and affected item caches synchronously for mark-all-read", () => {
+    const qc = new QueryClient();
+    const listKey = [...queryKeys.items.lists(), { unread: true }, 20];
+    const feedsKey = queryKeys.feeds.list();
+    const bookmarksKey = [...queryKeys.bookmarks.lists(), {}, 20];
+
+    qc.setQueryData<ItemsInfiniteData>(listKey, {
+      pages: [
+        {
+          data: [makeItem(1, { feed_id: 1, unread: true }), makeItem(2, { feed_id: 2, unread: true })],
+          total: 2,
+          next_cursor: null,
+        },
+      ],
+      pageParams: [null],
+    });
+    qc.setQueryData(feedsKey, [makeFeed(1, 5), { ...makeFeed(2, 4), group_id: 2 }]);
+    qc.setQueryData<BookmarksInfiniteData>(bookmarksKey, {
+      pages: [{ data: [makeBookmark(10, 1, true)], total: 1, next_cursor: null }],
+      pageParams: [null],
+    });
+
+    applyScopeMarkAllReadCache(qc, { feed_id: 1 }, [1]);
+
+    const feeds = qc.getQueryData<Feed[]>(feedsKey)!;
+    expect(feeds[0].unread_count).toBe(0);
+    expect(feeds[1].unread_count).toBe(4);
+    expect(qc.getQueryData<ItemsInfiniteData>(listKey)?.pages[0].data[0].unread).toBe(false);
+    expect(qc.getQueryData<ItemsInfiniteData>(listKey)?.pages[0].data[1].unread).toBe(true);
+    expect(qc.getQueryData<BookmarksInfiniteData>(bookmarksKey)?.pages[0].data[0].unread).toBe(false);
   });
 });
