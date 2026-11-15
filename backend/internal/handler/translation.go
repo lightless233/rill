@@ -41,10 +41,15 @@ func validateTranslateRequest(req *translateArticleRequest) ([]translator.Segmen
 	}
 
 	segments := make([]translator.Segment, 0, len(req.Blocks))
+	seenIDs := make(map[int]struct{}, len(req.Blocks))
 	for _, b := range req.Blocks {
 		if b.ID < 0 {
 			return nil, fmt.Errorf("invalid block id")
 		}
+		if _, dup := seenIDs[b.ID]; dup {
+			return nil, fmt.Errorf("duplicate block id")
+		}
+		seenIDs[b.ID] = struct{}{}
 		if strings.TrimSpace(b.Text) == "" {
 			continue
 		}
@@ -58,6 +63,30 @@ func validateTranslateRequest(req *translateArticleRequest) ([]translator.Segmen
 		return nil, fmt.Errorf("empty translation content")
 	}
 	return segments, nil
+}
+
+func isCompleteCachedTranslation(title string, segments []translator.Segment, cached *model.ArticleTranslation) bool {
+	if cached == nil {
+		return false
+	}
+	if strings.TrimSpace(title) != "" && strings.TrimSpace(cached.TranslatedTitle) == "" {
+		return false
+	}
+	if len(segments) == 0 {
+		return true
+	}
+	byID := make(map[int]string, len(cached.Blocks))
+	for _, b := range cached.Blocks {
+		if strings.TrimSpace(b.Text) != "" {
+			byID[b.ID] = b.Text
+		}
+	}
+	for _, seg := range segments {
+		if _, ok := byID[seg.ID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Handler) lookupTranslation(c *gin.Context) {
@@ -79,7 +108,7 @@ func (h *Handler) lookupTranslation(c *gin.Context) {
 		internalError(c, err, "lookup translation")
 		return
 	}
-	if cached == nil {
+	if !isCompleteCachedTranslation(req.Title, segments, cached) {
 		dataResponse(c, gin.H{"found": false})
 		return
 	}
@@ -212,6 +241,9 @@ func (h *Handler) translateArticle(c *gin.Context) {
 		if err != nil {
 			internalError(c, err, "check cached translation")
 			return
+		}
+		if !isCompleteCachedTranslation(req.Title, segments, cached) {
+			cached = nil
 		}
 	}
 

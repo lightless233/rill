@@ -68,6 +68,7 @@ type streamChunk struct {
 		Delta struct {
 			Content string `json:"content"`
 		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Error *upstreamErrorDetail `json:"error"`
 }
@@ -181,6 +182,9 @@ func BuildBatches(title string, blocks []Segment, maxRunes, maxItems int) [][]ta
 		items = append(items, taggedItem{key: "title", text: trimmedTitle})
 	}
 	for _, b := range blocks {
+		if strings.TrimSpace(b.Text) == "" {
+			continue
+		}
 		items = append(items, taggedItem{key: strconv.Itoa(b.ID), text: b.Text})
 	}
 	if len(items) == 0 {
@@ -398,8 +402,17 @@ Rules:
 	if err := parser.Finish(); err != nil {
 		return err
 	}
-	if parser.emitted == 0 {
+	if len(parser.received) == 0 {
 		return errors.New("upstream returned no translated segments")
+	}
+	var missing []string
+	for _, item := range batch {
+		if _, ok := parser.received[item.key]; !ok {
+			missing = append(missing, item.key)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("upstream response incomplete: missing translated segments (%s)", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -527,6 +540,9 @@ func (c *Client) streamCompletion(
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
 
+	sawDone := false
+	sawStopReason := false
+
 	for scanner.Scan() {
 		line := strings.TrimRight(scanner.Text(), "\r")
 		if line == "" || strings.HasPrefix(line, ":") {
@@ -537,6 +553,7 @@ func (c *Client) streamCompletion(
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if data == "[DONE]" {
+			sawDone = true
 			break
 		}
 
@@ -548,12 +565,20 @@ func (c *Client) streamCompletion(
 			return fmt.Errorf("upstream error: %s", strings.TrimSpace(chunk.Error.Message))
 		}
 		for _, choice := range chunk.Choices {
-			if choice.Delta.Content == "" {
-				continue
-			}
-			if onDelta != nil {
+			if choice.Delta.Content != "" && onDelta != nil {
 				if err := onDelta(choice.Delta.Content); err != nil {
 					return err
+				}
+			}
+			if choice.FinishReason != nil {
+				if fr := strings.TrimSpace(*choice.FinishReason); fr != "" {
+					if !strings.EqualFold(fr, "stop") {
+						if strings.EqualFold(fr, "length") {
+							return errors.New("upstream response truncated (finish_reason: length)")
+						}
+						return fmt.Errorf("upstream completion stopped early (finish_reason: %s)", fr)
+					}
+					sawStopReason = true
 				}
 			}
 		}
@@ -561,6 +586,9 @@ func (c *Client) streamCompletion(
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read completion stream: %w", err)
+	}
+	if !sawDone && !sawStopReason {
+		return errors.New("upstream completion stream ended unexpectedly")
 	}
 	return nil
 }
@@ -586,7 +614,7 @@ type segmentStreamParser struct {
 	pendingLine strings.Builder
 	activeKey   string
 	activeBody  strings.Builder
-	emitted     int
+	received    map[string]struct{}
 }
 
 func (p *segmentStreamParser) Feed(delta string) error {
@@ -652,7 +680,10 @@ func (p *segmentStreamParser) flushActive() error {
 	if text == "" {
 		return nil
 	}
-	p.emitted++
+	if p.received == nil {
+		p.received = make(map[string]struct{}, len(p.expected))
+	}
+	p.received[key] = struct{}{}
 	if p.onSegment != nil {
 		return p.onSegment(key, text)
 	}

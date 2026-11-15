@@ -204,3 +204,106 @@ func TestSummarizeArticleStreaming(t *testing.T) {
 		t.Fatalf("expected distinct summary hashes when body changes")
 	}
 }
+
+func TestTranslateArticleRejectsIncompleteAndTruncatedStreams(t *testing.T) {
+	t.Run("missing expected segment", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{
+					"delta":         map[string]string{"content": "[[title]]\n标题\n[[0]]\n第一段\n"},
+					"finish_reason": "stop",
+				}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", payload)
+		}))
+		defer srv.Close()
+
+		client := NewClient()
+		_, err := client.TranslateArticle(
+			context.Background(),
+			Config{APIURL: srv.URL, APIKey: "sk-test"},
+			"Title",
+			[]Segment{{ID: 0, Text: "First"}, {ID: 1, Text: "Second"}},
+			nil,
+		)
+		if err == nil || !strings.Contains(err.Error(), "missing translated segments") || !strings.Contains(err.Error(), "1") {
+			t.Fatalf("expected missing segment error for id 1, got %v", err)
+		}
+	})
+
+	t.Run("finish_reason length on translation", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			chunk1, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{"content": "[[title]]\n标题\n[[0]]\n未完"}}},
+			})
+			chunk2, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{}, "finish_reason": "length"}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: %s\n\ndata: [DONE]\n\n", chunk1, chunk2)
+		}))
+		defer srv.Close()
+
+		client := NewClient()
+		_, err := client.TranslateArticle(
+			context.Background(),
+			Config{APIURL: srv.URL, APIKey: "sk-test"},
+			"Title",
+			[]Segment{{ID: 0, Text: "First"}},
+			nil,
+		)
+		if err == nil || !strings.Contains(err.Error(), "length") {
+			t.Fatalf("expected finish_reason length error, got %v", err)
+		}
+	})
+
+	t.Run("finish_reason length on summary", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			chunk1, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{"content": "半截摘要"}}},
+			})
+			chunk2, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{}, "finish_reason": "length"}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: %s\n\ndata: [DONE]\n\n", chunk1, chunk2)
+		}))
+		defer srv.Close()
+
+		client := NewClient()
+		_, _, err := client.SummarizeArticle(
+			context.Background(),
+			Config{APIURL: srv.URL, APIKey: "sk-test"},
+			"Title",
+			"Full article body.",
+			nil,
+		)
+		if err == nil || !strings.Contains(err.Error(), "length") {
+			t.Fatalf("expected finish_reason length error on summary, got %v", err)
+		}
+	})
+
+	t.Run("unexpected EOF without done or stop", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			chunk1, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{"content": "[[title]]\n标题\n[[0]]\n完整\n"}}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", chunk1)
+		}))
+		defer srv.Close()
+
+		client := NewClient()
+		_, err := client.TranslateArticle(
+			context.Background(),
+			Config{APIURL: srv.URL, APIKey: "sk-test"},
+			"Title",
+			[]Segment{{ID: 0, Text: "First"}},
+			nil,
+		)
+		if err == nil {
+			t.Fatalf("expected error on truncated SSE stream without [DONE] or finish_reason")
+		}
+	})
+}

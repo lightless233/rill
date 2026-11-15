@@ -189,3 +189,79 @@ func TestSummaryFlowLookupStreamAndCache(t *testing.T) {
 		t.Fatalf("expected force=true to trigger upstream call 2, code=%d calls=%d", w.Code, upstreamCalls.Load())
 	}
 }
+
+func TestIncompleteTranslationAndTruncatedSummaryNotCached(t *testing.T) {
+	var mode atomic.Int32 // 0 = missing segment, 1 = finish_reason length, 2 = complete
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch mode.Load() {
+		case 0:
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{
+					"delta":         map[string]string{"content": "[[title]]\n标题\n[[0]]\n第一段\n"},
+					"finish_reason": "stop",
+				}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", payload)
+		case 1:
+			chunk1, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{"content": "截断摘要"}}},
+			})
+			chunk2, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{}, "finish_reason": "length"}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: %s\n\ndata: [DONE]\n\n", chunk1, chunk2)
+		default:
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{
+					"delta":         map[string]string{"content": "[[title]]\n标题\n[[0]]\n第一段\n[[1]]\n第二段\n"},
+					"finish_reason": "stop",
+				}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", payload)
+		}
+	}))
+	defer upstream.Close()
+
+	r, cookie := newSettingsTestRouter(t)
+	patchBody := fmt.Sprintf(`{"translation_api_url":%q,"translation_api_key":"sk-mock-key"}`, upstream.URL)
+	w := performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(patchBody), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH settings failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	transReq := `{"title":"Title","blocks":[{"id":0,"text":"First paragraph."},{"id":1,"text":"Second paragraph."}]}`
+	mode.Store(0)
+	w = performRequest(r, http.MethodPost, "/api/translations", strings.NewReader(transReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: error") || strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected error SSE without done on missing segment, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = performRequest(r, http.MethodPost, "/api/translations/lookup", strings.NewReader(transReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"found":false`) {
+		t.Fatalf("expected incomplete translation not to be cached, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Retry once upstream returns all segments -> succeeds and enters cache.
+	mode.Store(2)
+	w = performRequest(r, http.MethodPost, "/api/translations", strings.NewReader(transReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected complete translation to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+	w = performRequest(r, http.MethodPost, "/api/translations/lookup", strings.NewReader(transReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"found":true`) || !strings.Contains(w.Body.String(), "第二段") {
+		t.Fatalf("expected complete translation cached, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Summary truncation via finish_reason: length -> SSE error and no cache entry.
+	sumReq := `{"title":"Long Article","content":"Lots of technical content."}`
+	mode.Store(1)
+	w = performRequest(r, http.MethodPost, "/api/summaries", strings.NewReader(sumReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: error") || strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected error SSE without done on truncated summary, got %d: %s", w.Code, w.Body.String())
+	}
+	w = performRequest(r, http.MethodPost, "/api/summaries/lookup", strings.NewReader(sumReq), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"found":false`) {
+		t.Fatalf("expected truncated summary not to be cached, got %d: %s", w.Code, w.Body.String())
+	}
+}

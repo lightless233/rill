@@ -226,7 +226,7 @@
 }
 
 .rill-summary-content code {
-  font-family: var(--article-mono-font);
+  font-family: var(--article-font-mono, var(--font-geist-mono));
   font-size: 0.88em;
   padding: 0.1em 0.35em;
   border-radius: 0.25rem;
