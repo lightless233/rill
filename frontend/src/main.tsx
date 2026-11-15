@@ -6,6 +6,7 @@ import { ThemeProvider } from "next-themes";
 import { routeTree } from "./routeTree.gen";
 import { Toaster } from "@/components/ui/sonner";
 import { setUnauthorizedCallback } from "@/lib/api";
+import { applyArticleFontPreferences } from "@/lib/fonts";
 import { preloadLocaleMessages } from "@/lib/i18n";
 import { queryClient } from "@/lib/query-client";
 import { registerPWA } from "@/lib/pwa";
@@ -30,12 +31,30 @@ setUnauthorizedCallback(() => {
   window.location.href = "/login";
 });
 
-const initialLocale = usePreferencesStore.getState().locale;
-document.documentElement.lang = initialLocale;
-void preloadLocaleMessages(initialLocale);
-usePreferencesStore.subscribe((state) => {
-  document.documentElement.lang = state.locale;
-  void preloadLocaleMessages(state.locale);
+const initialPreferences = usePreferencesStore.getState();
+document.documentElement.lang = initialPreferences.locale;
+void preloadLocaleMessages(initialPreferences.locale);
+applyArticleFontPreferences({
+  latinFont: initialPreferences.latinFont,
+  cjkFont: initialPreferences.cjkFont,
+  monoFont: initialPreferences.monoFont,
+});
+usePreferencesStore.subscribe((state, prevState) => {
+  if (state.locale !== prevState.locale) {
+    document.documentElement.lang = state.locale;
+    void preloadLocaleMessages(state.locale);
+  }
+  if (
+    state.latinFont !== prevState.latinFont ||
+    state.cjkFont !== prevState.cjkFont ||
+    state.monoFont !== prevState.monoFont
+  ) {
+    applyArticleFontPreferences({
+      latinFont: state.latinFont,
+      cjkFont: state.cjkFont,
+      monoFont: state.monoFont,
+    });
+  }
 });
 
 // Register the router instance for type safety

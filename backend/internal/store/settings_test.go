@@ -19,7 +19,8 @@ func TestGetSettingsEmpty(t *testing.T) {
 		t.Fatalf("GetSettings() failed: %v", err)
 	}
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
-		settings.AutoMarkRead != nil {
+		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
+		settings.MonoFont != nil {
 		t.Errorf("expected all-nil settings on empty database, got %+v", settings)
 	}
 }
@@ -76,6 +77,9 @@ func TestUpdateSettingsAllFields(t *testing.T) {
 		ArticlePageSize: int64Ptr(50),
 		Theme:           strPtr("system"),
 		AutoMarkRead:    strPtr("open"),
+		LatinFont:       strPtr("newsreader"),
+		CJKFont:         strPtr("noto-serif-sc"),
+		MonoFont:        strPtr("jetbrains-mono"),
 	})
 	if err != nil {
 		t.Fatalf("UpdateSettings(all fields) failed: %v", err)
@@ -85,10 +89,50 @@ func TestUpdateSettingsAllFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSettings() failed: %v", err)
 	}
-	want := &model.Settings{Locale: strPtr("zh"), ArticlePageSize: int64Ptr(50), Theme: strPtr("system"), AutoMarkRead: strPtr("open"), UpdatedAt: settings.UpdatedAt}
+	want := &model.Settings{
+		Locale:          strPtr("zh"),
+		ArticlePageSize: int64Ptr(50),
+		Theme:           strPtr("system"),
+		AutoMarkRead:    strPtr("open"),
+		LatinFont:       strPtr("newsreader"),
+		CJKFont:         strPtr("noto-serif-sc"),
+		MonoFont:        strPtr("jetbrains-mono"),
+		UpdatedAt:       settings.UpdatedAt,
+	}
 	if *settings.Locale != *want.Locale || *settings.ArticlePageSize != *want.ArticlePageSize ||
-		*settings.Theme != *want.Theme || *settings.AutoMarkRead != *want.AutoMarkRead {
+		*settings.Theme != *want.Theme || *settings.AutoMarkRead != *want.AutoMarkRead ||
+		*settings.LatinFont != *want.LatinFont || *settings.CJKFont != *want.CJKFont ||
+		*settings.MonoFont != *want.MonoFont {
 		t.Errorf("got %+v, want %+v", settings, want)
+	}
+}
+
+// Each font column must bypass the all-nil short circuit individually.
+func TestUpdateSettingsFontFieldsOnly(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	if err := store.UpdateSettings(UpdateSettingsParams{LatinFont: strPtr("lora")}); err != nil {
+		t.Fatalf("UpdateSettings(latin_font) failed: %v", err)
+	}
+	if err := store.UpdateSettings(UpdateSettingsParams{CJKFont: strPtr("lxgw-wenkai")}); err != nil {
+		t.Fatalf("UpdateSettings(cjk_font) failed: %v", err)
+	}
+	if err := store.UpdateSettings(UpdateSettingsParams{MonoFont: strPtr("fira-code")}); err != nil {
+		t.Fatalf("UpdateSettings(mono_font) failed: %v", err)
+	}
+
+	settings, err := store.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings() failed: %v", err)
+	}
+	if settings.LatinFont == nil || *settings.LatinFont != "lora" ||
+		settings.CJKFont == nil || *settings.CJKFont != "lxgw-wenkai" ||
+		settings.MonoFont == nil || *settings.MonoFont != "fira-code" {
+		t.Fatalf("expected all three font fields saved, got %+v", settings)
+	}
+	if settings.Locale != nil {
+		t.Errorf("expected locale to stay unset, got %v", *settings.Locale)
 	}
 }
 

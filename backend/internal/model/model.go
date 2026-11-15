@@ -78,6 +78,9 @@ type Settings struct {
 	ArticlePageSize *int64  `json:"article_page_size"`
 	Theme           *string `json:"theme"`
 	AutoMarkRead    *string `json:"auto_mark_read"`
+	LatinFont       *string `json:"latin_font"`
+	CJKFont         *string `json:"cjk_font"`
+	MonoFont        *string `json:"mono_font"`
 	UpdatedAt       int64   `json:"updated_at"`
 }
 

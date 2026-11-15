@@ -5,6 +5,9 @@ import { ensureLocaleMessages } from "@/lib/i18n/messages";
 import {
   isArticlePageSize,
   isAutoMarkRead,
+  isCJKFont,
+  isLatinFont,
+  isMonoFont,
   isSupportedLocale,
   usePreferencesStore,
 } from "@/store/preferences";
@@ -138,6 +141,30 @@ export async function pullRemoteSettings(): Promise<void> {
       settings.auto_mark_read !== preferences.autoMarkRead
     ) {
       usePreferencesStore.getState().setAutoMarkRead(settings.auto_mark_read);
+    }
+
+    if (
+      settings.latin_font !== null &&
+      isLatinFont(settings.latin_font) &&
+      settings.latin_font !== preferences.latinFont
+    ) {
+      usePreferencesStore.getState().setLatinFont(settings.latin_font);
+    }
+
+    if (
+      settings.cjk_font !== null &&
+      isCJKFont(settings.cjk_font) &&
+      settings.cjk_font !== preferences.cjkFont
+    ) {
+      usePreferencesStore.getState().setCJKFont(settings.cjk_font);
+    }
+
+    if (
+      settings.mono_font !== null &&
+      isMonoFont(settings.mono_font) &&
+      settings.mono_font !== preferences.monoFont
+    ) {
+      usePreferencesStore.getState().setMonoFont(settings.mono_font);
     }
 
     const storedTheme = localStorage.getItem("theme");

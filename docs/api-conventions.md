@@ -92,4 +92,5 @@ Three cases return the status with an empty body instead: unknown routes
   value unchanged, and there is deliberately no way to clear a preference
   back to null. Closed sets: locale `en|zh|de|fr|es|ru|pt|sv`, theme
   `light|dark|system`, `auto_mark_read` `off|open|5|10|30`,
-  `article_page_size` 1–100.
+  `article_page_size` 1–100, and the typography allow-lists (`latin_font`,
+  `cjk_font`, `mono_font`) defined in `backend/internal/handler/settings.go`.

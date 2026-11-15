@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Bug, Download, Info, Keyboard, Settings as SettingsIcon } from "lucide-react";
@@ -7,7 +7,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -21,6 +24,16 @@ import {
 import { usePWAInstall } from "@/hooks/use-pwa-install";
 import { localeLabels, useI18n } from "@/lib/i18n";
 import { ensureLocaleMessages } from "@/lib/i18n/messages";
+import {
+  CJK_FONT_OPTIONS,
+  LATIN_FONT_OPTIONS,
+  MONO_FONT_OPTIONS,
+  preloadAllArticleFonts,
+  type CJKFont,
+  type FontOptionMeta,
+  type LatinFont,
+  type MonoFont,
+} from "@/lib/fonts";
 import { APIError, settingsAPI, type UpdateSettingsRequest } from "@/lib/api";
 import { waitForSettingsSeed } from "@/lib/settings-sync";
 import type { AppLocale } from "@/store/preferences";
@@ -39,7 +52,15 @@ type SettingsTab = "general" | "about";
 // Module scope so the counters survive unmounting a tab or the dialog
 // itself: a late-failing save from an old mount must not revert a newer
 // change made on a new one.
-const changeGenerations = { locale: 0, pageSize: 0, theme: 0, autoMarkRead: 0 };
+const changeGenerations = {
+  locale: 0,
+  pageSize: 0,
+  theme: 0,
+  autoMarkRead: 0,
+  latinFont: 0,
+  cjkFont: 0,
+  monoFont: 0,
+};
 
 function beginChange(field: keyof typeof changeGenerations): number {
   return ++changeGenerations[field];
@@ -110,6 +131,104 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
   );
 }
 
+interface FontSettingItem<T extends string> {
+  value: T;
+  label: string;
+  category: "sans" | "serif" | "mono";
+  family: string;
+}
+
+interface FontSettingRowProps<T extends string> {
+  label: string;
+  description: string;
+  value: T;
+  items: FontSettingItem<T>[];
+  sansGroupLabel: string;
+  serifGroupLabel: string;
+  onChange: (value: T) => void;
+}
+
+function FontSettingRow<T extends string>({
+  label,
+  description,
+  value,
+  items,
+  sansGroupLabel,
+  serifGroupLabel,
+  onChange,
+}: FontSettingRowProps<T>) {
+  const selectItems = items.map((item) => ({
+    value: item.value,
+    label: item.label,
+  }));
+  const sansItems = items.filter((item) => item.category === "sans");
+  const serifItems = items.filter((item) => item.category === "serif");
+  const grouped = sansItems.length > 0 && serifItems.length > 0;
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-[13px] text-muted-foreground">{description}</p>
+      </div>
+      <Select
+        items={selectItems}
+        value={value}
+        onValueChange={(nextValue) => {
+          if (nextValue) {
+            onChange(nextValue as T);
+          }
+        }}
+      >
+        <SelectTrigger className="w-auto min-w-44 shrink-0 justify-between gap-2 border-border">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {grouped ? (
+            <>
+              <SelectGroup>
+                <SelectLabel>{sansGroupLabel}</SelectLabel>
+                {sansItems.map((item) => (
+                  <SelectItem
+                    key={item.value}
+                    value={item.value}
+                    style={{ fontFamily: item.family }}
+                  >
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>{serifGroupLabel}</SelectLabel>
+                {serifItems.map((item) => (
+                  <SelectItem
+                    key={item.value}
+                    value={item.value}
+                    style={{ fontFamily: item.family }}
+                  >
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </>
+          ) : (
+            items.map((item) => (
+              <SelectItem
+                key={item.value}
+                value={item.value}
+                style={{ fontFamily: item.family }}
+              >
+                {item.label}
+              </SelectItem>
+            ))
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 // One flat pane while the preference count is small; split into named
 // clusters (e.g. Appearance / Reading) only once a cluster has enough rows
 // to carry its own tab (~5), not before.
@@ -122,11 +241,35 @@ function GeneralContent() {
     locale,
     articlePageSize,
     autoMarkRead,
+    latinFont,
+    cjkFont,
+    monoFont,
     setLocale,
     setArticlePageSize,
     setAutoMarkRead,
+    setLatinFont,
+    setCJKFont,
+    setMonoFont,
   } = usePreferencesStore();
   const applySetting = useApplySetting();
+
+  useEffect(() => {
+    void preloadAllArticleFonts();
+  }, []);
+
+  const toFontItems = <T extends string>(
+    options: readonly FontOptionMeta<T>[],
+  ): FontSettingItem<T>[] =>
+    options.map((opt) => ({
+      value: opt.value,
+      label: opt.labelKey ? t(opt.labelKey) : (opt.label ?? opt.value),
+      category: opt.category,
+      family: opt.family,
+    }));
+
+  const latinFontItems = toFontItems(LATIN_FONT_OPTIONS);
+  const cjkFontItems = toFontItems(CJK_FONT_OPTIONS);
+  const monoFontItems = toFontItems(MONO_FONT_OPTIONS);
 
   const localeItems = supportedLocales.map((localeCode) => ({
     value: localeCode,
@@ -326,8 +469,87 @@ function GeneralContent() {
         </Select>
       </div>
 
+      {/* Article fonts */}
+      <div className="space-y-5 border-t border-border pt-5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {t("settings.typography.title")}
+        </h3>
+
+        <FontSettingRow
+          label={t("settings.latinFont.label")}
+          description={t("settings.latinFont.description")}
+          value={latinFont}
+          items={latinFontItems}
+          sansGroupLabel={t("settings.fonts.group.sans")}
+          serifGroupLabel={t("settings.fonts.group.serif")}
+          onChange={(nextFont: LatinFont) => {
+            const previous = latinFont;
+            void applySetting(
+              "latinFont",
+              beginChange("latinFont"),
+              { latin_font: nextFont },
+              () => setLatinFont(nextFont),
+              () => setLatinFont(previous),
+            );
+          }}
+        />
+
+        <FontSettingRow
+          label={t("settings.cjkFont.label")}
+          description={t("settings.cjkFont.description")}
+          value={cjkFont}
+          items={cjkFontItems}
+          sansGroupLabel={t("settings.fonts.group.sans")}
+          serifGroupLabel={t("settings.fonts.group.serif")}
+          onChange={(nextFont: CJKFont) => {
+            const previous = cjkFont;
+            void applySetting(
+              "cjkFont",
+              beginChange("cjkFont"),
+              { cjk_font: nextFont },
+              () => setCJKFont(nextFont),
+              () => setCJKFont(previous),
+            );
+          }}
+        />
+
+        <FontSettingRow
+          label={t("settings.monoFont.label")}
+          description={t("settings.monoFont.description")}
+          value={monoFont}
+          items={monoFontItems}
+          sansGroupLabel={t("settings.fonts.group.sans")}
+          serifGroupLabel={t("settings.fonts.group.serif")}
+          onChange={(nextFont: MonoFont) => {
+            const previous = monoFont;
+            void applySetting(
+              "monoFont",
+              beginChange("monoFont"),
+              { mono_font: nextFont },
+              () => setMonoFont(nextFont),
+              () => setMonoFont(previous),
+            );
+          }}
+        />
+
+        {/* Live preview */}
+        <div className="space-y-2 rounded-lg border border-border bg-muted/30 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            {t("settings.fonts.preview.label")}
+          </p>
+          <p className="article-typography text-[0.9375rem] leading-relaxed text-foreground">
+            {t("settings.fonts.preview.sample")}
+          </p>
+          <pre className="overflow-x-auto rounded border border-border/60 bg-background/70 px-2.5 py-1.5 text-xs text-foreground">
+            <code className="article-typography-mono">
+              {t("settings.fonts.preview.codeSample")}
+            </code>
+          </pre>
+        </div>
+      </div>
+
       {/* Keyboard shortcuts */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-t border-border pt-5">
         <div className="space-y-1">
           <p className="text-sm font-medium">{t("settings.shortcuts.label")}</p>
           <p className="text-[13px] text-muted-foreground">
@@ -465,7 +687,7 @@ export function SettingsDialog() {
             {tabTitles[activeTab]}
           </h2>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pr-1">
             {activeTab === "general" && <GeneralContent />}
             {activeTab === "about" && <AboutContent />}
           </div>

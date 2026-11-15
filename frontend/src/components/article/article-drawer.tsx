@@ -326,7 +326,7 @@ export function ArticleDrawer() {
                   />
                 )}
                 <div className="space-y-3">
-                  <h1 className="text-[28px] font-bold leading-[1.3]">
+                  <h1 className="article-typography text-[28px] font-bold leading-[1.3]">
                     {displayedArticle.title}
                   </h1>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">

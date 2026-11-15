@@ -1,5 +1,19 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import {
+  cjkFontOptions,
+  defaultCJKFont,
+  defaultLatinFont,
+  defaultMonoFont,
+  latinFontOptions,
+  monoFontOptions,
+  type CJKFont,
+  type LatinFont,
+  type MonoFont,
+} from "@/lib/fonts";
+
+export { cjkFontOptions, latinFontOptions, monoFontOptions };
+export type { CJKFont, LatinFont, MonoFont };
 
 export const supportedLocales = [
   "en",
@@ -26,6 +40,9 @@ export type AutoMarkRead = (typeof autoMarkReadOptions)[number];
 const localeSet = new Set<AppLocale>(supportedLocales);
 const articlePageSizeSet = new Set<number>(articlePageSizeOptions);
 const autoMarkReadSet = new Set<AutoMarkRead>(autoMarkReadOptions);
+const latinFontSet = new Set<LatinFont>(latinFontOptions);
+const cjkFontSet = new Set<CJKFont>(cjkFontOptions);
+const monoFontSet = new Set<MonoFont>(monoFontOptions);
 
 function resolveSupportedLocale(locale: string): AppLocale | null {
   const normalized = locale.toLowerCase().replace("_", "-");
@@ -75,6 +92,24 @@ function normalizeAutoMarkRead(value: string | undefined | null): AutoMarkRead {
     : defaultAutoMarkRead;
 }
 
+function normalizeLatinFont(value: string | undefined | null): LatinFont {
+  return value !== null && latinFontSet.has(value as LatinFont)
+    ? (value as LatinFont)
+    : defaultLatinFont;
+}
+
+function normalizeCJKFont(value: string | undefined | null): CJKFont {
+  return value !== null && cjkFontSet.has(value as CJKFont)
+    ? (value as CJKFont)
+    : defaultCJKFont;
+}
+
+function normalizeMonoFont(value: string | undefined | null): MonoFont {
+  return value !== null && monoFontSet.has(value as MonoFont)
+    ? (value as MonoFont)
+    : defaultMonoFont;
+}
+
 // "off" disables the feature; every other member maps to a delay where 0
 // means "as soon as the article is open".
 export function autoMarkReadDelayMs(option: AutoMarkRead): number | null {
@@ -88,9 +123,15 @@ export interface PreferencesState {
   locale: AppLocale;
   articlePageSize: ArticlePageSize;
   autoMarkRead: AutoMarkRead;
+  latinFont: LatinFont;
+  cjkFont: CJKFont;
+  monoFont: MonoFont;
   setLocale: (locale: string) => void;
   setArticlePageSize: (size: number) => void;
   setAutoMarkRead: (option: string) => void;
+  setLatinFont: (font: string) => void;
+  setCJKFont: (font: string) => void;
+  setMonoFont: (font: string) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -99,11 +140,17 @@ export const usePreferencesStore = create<PreferencesState>()(
       locale: defaultLocale,
       articlePageSize: defaultArticlePageSize,
       autoMarkRead: defaultAutoMarkRead,
+      latinFont: defaultLatinFont,
+      cjkFont: defaultCJKFont,
+      monoFont: defaultMonoFont,
       setLocale: (locale) => set({ locale: normalizeLocale(locale) }),
       setArticlePageSize: (size) =>
         set({ articlePageSize: normalizeArticlePageSize(size) }),
       setAutoMarkRead: (option) =>
         set({ autoMarkRead: normalizeAutoMarkRead(option) }),
+      setLatinFont: (font) => set({ latinFont: normalizeLatinFont(font) }),
+      setCJKFont: (font) => set({ cjkFont: normalizeCJKFont(font) }),
+      setMonoFont: (font) => set({ monoFont: normalizeMonoFont(font) }),
     }),
     {
       name: "fusion-preferences",
@@ -112,6 +159,9 @@ export const usePreferencesStore = create<PreferencesState>()(
         locale: state.locale,
         articlePageSize: state.articlePageSize,
         autoMarkRead: state.autoMarkRead,
+        latinFont: state.latinFont,
+        cjkFont: state.cjkFont,
+        monoFont: state.monoFont,
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PreferencesState> | undefined;
@@ -124,6 +174,15 @@ export const usePreferencesStore = create<PreferencesState>()(
           ),
           autoMarkRead: normalizeAutoMarkRead(
             persisted?.autoMarkRead ?? currentState.autoMarkRead,
+          ),
+          latinFont: normalizeLatinFont(
+            persisted?.latinFont ?? currentState.latinFont,
+          ),
+          cjkFont: normalizeCJKFont(
+            persisted?.cjkFont ?? currentState.cjkFont,
+          ),
+          monoFont: normalizeMonoFont(
+            persisted?.monoFont ?? currentState.monoFont,
           ),
         };
       },
@@ -145,4 +204,16 @@ export function isArticlePageSize(size: number): size is ArticlePageSize {
 
 export function isAutoMarkRead(value: string): value is AutoMarkRead {
   return autoMarkReadSet.has(value as AutoMarkRead);
+}
+
+export function isLatinFont(value: string): value is LatinFont {
+  return latinFontSet.has(value as LatinFont);
+}
+
+export function isCJKFont(value: string): value is CJKFont {
+  return cjkFontSet.has(value as CJKFont);
+}
+
+export function isMonoFont(value: string): value is MonoFont {
+  return monoFontSet.has(value as MonoFont);
 }

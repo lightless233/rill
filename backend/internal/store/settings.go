@@ -13,10 +13,19 @@ import (
 func (s *Store) GetSettings() (*model.Settings, error) {
 	settings := &model.Settings{}
 	err := s.db.QueryRow(`
-		SELECT locale, article_page_size, theme, auto_mark_read, updated_at
+		SELECT locale, article_page_size, theme, auto_mark_read, latin_font, cjk_font, mono_font, updated_at
 		FROM settings
 		WHERE id = 1
-	`).Scan(&settings.Locale, &settings.ArticlePageSize, &settings.Theme, &settings.AutoMarkRead, &settings.UpdatedAt)
+	`).Scan(
+		&settings.Locale,
+		&settings.ArticlePageSize,
+		&settings.Theme,
+		&settings.AutoMarkRead,
+		&settings.LatinFont,
+		&settings.CJKFont,
+		&settings.MonoFont,
+		&settings.UpdatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return settings, nil
@@ -33,6 +42,9 @@ type UpdateSettingsParams struct {
 	ArticlePageSize *int64
 	Theme           *string
 	AutoMarkRead    *string
+	LatinFont       *string
+	CJKFont         *string
+	MonoFont        *string
 }
 
 // UpdateSettings upserts the singleton settings row. Fields set to nil keep
@@ -41,24 +53,31 @@ type UpdateSettingsParams struct {
 // passed through to SQL as NULL by database/sql.
 func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 	if params.Locale == nil && params.ArticlePageSize == nil && params.Theme == nil &&
-		params.AutoMarkRead == nil {
+		params.AutoMarkRead == nil && params.LatinFont == nil && params.CJKFont == nil &&
+		params.MonoFont == nil {
 		return nil
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO settings (id, locale, article_page_size, theme, auto_mark_read)
-		VALUES (1, :locale, :article_page_size, :theme, :auto_mark_read)
+		INSERT INTO settings (id, locale, article_page_size, theme, auto_mark_read, latin_font, cjk_font, mono_font)
+		VALUES (1, :locale, :article_page_size, :theme, :auto_mark_read, :latin_font, :cjk_font, :mono_font)
 		ON CONFLICT (id) DO UPDATE SET
 			locale = COALESCE(excluded.locale, settings.locale),
 			article_page_size = COALESCE(excluded.article_page_size, settings.article_page_size),
 			theme = COALESCE(excluded.theme, settings.theme),
 			auto_mark_read = COALESCE(excluded.auto_mark_read, settings.auto_mark_read),
+			latin_font = COALESCE(excluded.latin_font, settings.latin_font),
+			cjk_font = COALESCE(excluded.cjk_font, settings.cjk_font),
+			mono_font = COALESCE(excluded.mono_font, settings.mono_font),
 			updated_at = unixepoch()
 	`,
 		sql.Named("locale", params.Locale),
 		sql.Named("article_page_size", params.ArticlePageSize),
 		sql.Named("theme", params.Theme),
 		sql.Named("auto_mark_read", params.AutoMarkRead),
+		sql.Named("latin_font", params.LatinFont),
+		sql.Named("cjk_font", params.CJKFont),
+		sql.Named("mono_font", params.MonoFont),
 	)
 	if err != nil {
 		return fmt.Errorf("update settings: %w", err)

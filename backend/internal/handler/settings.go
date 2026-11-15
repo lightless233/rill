@@ -18,6 +18,31 @@ var (
 	validLocales      = []string{"en", "zh", "de", "fr", "es", "ru", "pt", "sv"}
 	validThemes       = []string{"light", "dark", "system"}
 	validAutoMarkRead = []string{"off", "open", "5", "10", "30"}
+	validLatinFonts   = []string{
+		"geist",
+		"inter",
+		"source-sans-3",
+		"system-sans",
+		"newsreader",
+		"source-serif-4",
+		"lora",
+		"system-serif",
+	}
+	validCJKFonts = []string{
+		"system",
+		"noto-sans-sc",
+		"system-sans",
+		"noto-serif-sc",
+		"lxgw-wenkai",
+		"system-serif",
+		"system-kai",
+	}
+	validMonoFonts = []string{
+		"geist-mono",
+		"jetbrains-mono",
+		"fira-code",
+		"system-mono",
+	}
 )
 
 // A missing field and an explicit null are indistinguishable after JSON
@@ -27,6 +52,9 @@ type updateSettingsRequest struct {
 	ArticlePageSize *int64  `json:"article_page_size"`
 	Theme           *string `json:"theme"`
 	AutoMarkRead    *string `json:"auto_mark_read"`
+	LatinFont       *string `json:"latin_font"`
+	CJKFont         *string `json:"cjk_font"`
+	MonoFont        *string `json:"mono_font"`
 }
 
 func (h *Handler) getSettings(c *gin.Context) {
@@ -56,6 +84,9 @@ func (h *Handler) updateSettings(c *gin.Context) {
 		ArticlePageSize: req.ArticlePageSize,
 		Theme:           req.Theme,
 		AutoMarkRead:    req.AutoMarkRead,
+		LatinFont:       req.LatinFont,
+		CJKFont:         req.CJKFont,
+		MonoFont:        req.MonoFont,
 	}); err != nil {
 		internalError(c, err, "update settings")
 		return
@@ -83,6 +114,15 @@ func validateSettingsUpdate(req *updateSettingsRequest) error {
 	}
 	if req.AutoMarkRead != nil && !slices.Contains(validAutoMarkRead, *req.AutoMarkRead) {
 		return fmt.Errorf("invalid auto_mark_read")
+	}
+	if req.LatinFont != nil && !slices.Contains(validLatinFonts, *req.LatinFont) {
+		return fmt.Errorf("invalid latin_font")
+	}
+	if req.CJKFont != nil && !slices.Contains(validCJKFonts, *req.CJKFont) {
+		return fmt.Errorf("invalid cjk_font")
+	}
+	if req.MonoFont != nil && !slices.Contains(validMonoFonts, *req.MonoFont) {
+		return fmt.Errorf("invalid mono_font")
 	}
 	return nil
 }

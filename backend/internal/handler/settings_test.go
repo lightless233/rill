@@ -16,6 +16,9 @@ type settingsEnvelope struct {
 		ArticlePageSize *int64  `json:"article_page_size"`
 		Theme           *string `json:"theme"`
 		AutoMarkRead    *string `json:"auto_mark_read"`
+		LatinFont       *string `json:"latin_font"`
+		CJKFont         *string `json:"cjk_font"`
+		MonoFont        *string `json:"mono_font"`
 		UpdatedAt       int64   `json:"updated_at"`
 	} `json:"data"`
 }
@@ -59,14 +62,16 @@ func TestGetSettingsEmpty(t *testing.T) {
 
 	settings := decodeSettings(t, w).Data
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
-		settings.AutoMarkRead != nil {
+		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
+		settings.MonoFont != nil {
 		t.Errorf("expected all-null settings, got %+v", settings)
 	}
 
 	// Pointer decoding cannot distinguish a missing key from a JSON null, so
-	// assert on the raw body that all four keys are explicitly present.
+	// assert on the raw body that all seven keys are explicitly present.
 	for _, key := range []string{
 		`"locale":null`, `"article_page_size":null`, `"theme":null`, `"auto_mark_read":null`,
+		`"latin_font":null`, `"cjk_font":null`, `"mono_font":null`,
 	} {
 		if !strings.Contains(w.Body.String(), key) {
 			t.Errorf("expected body to contain %s, got %s", key, w.Body.String())
@@ -165,6 +170,12 @@ func TestUpdateSettingsValidation(t *testing.T) {
 		{"empty auto mark read", `{"auto_mark_read":""}`, "invalid auto_mark_read"},
 		{"auto mark read wrong type", `{"auto_mark_read":5}`, "invalid request"},
 		{"auto mark read numeric delay not in set", `{"auto_mark_read":"15"}`, "invalid auto_mark_read"},
+		{"invalid latin font", `{"latin_font":"comic-sans"}`, "invalid latin_font"},
+		{"empty latin font", `{"latin_font":""}`, "invalid latin_font"},
+		{"invalid cjk font", `{"cjk_font":"unknown"}`, "invalid cjk_font"},
+		{"empty cjk font", `{"cjk_font":""}`, "invalid cjk_font"},
+		{"invalid mono font", `{"mono_font":"courier"}`, "invalid mono_font"},
+		{"empty mono font", `{"mono_font":""}`, "invalid mono_font"},
 	}
 
 	for _, tt := range tests {
@@ -218,7 +229,8 @@ func TestUpdateSettingsEmptyBody(t *testing.T) {
 
 	settings := decodeSettings(t, w).Data
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
-		settings.AutoMarkRead != nil {
+		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
+		settings.MonoFont != nil {
 		t.Errorf("expected empty PATCH to be a no-op, got %+v", settings)
 	}
 	if settings.UpdatedAt != 0 {
@@ -260,5 +272,38 @@ func TestUpdateSettingsAutoMarkReadSingleField(t *testing.T) {
 	settings = decodeSettings(t, w).Data
 	if settings.AutoMarkRead == nil || *settings.AutoMarkRead != "10" {
 		t.Errorf("expected auto_mark_read to survive an unrelated PATCH, got %+v", settings)
+	}
+}
+
+func TestUpdateSettingsFontFieldsSingleAndRoundTrip(t *testing.T) {
+	r, cookie := newSettingsTestRouter(t)
+
+	w := performRequest(
+		r,
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(`{"latin_font":"newsreader","cjk_font":"lxgw-wenkai","mono_font":"jetbrains-mono"}`),
+		nil,
+		cookie,
+	)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH font fields: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	settings := decodeSettings(t, w).Data
+	if settings.LatinFont == nil || *settings.LatinFont != "newsreader" ||
+		settings.CJKFont == nil || *settings.CJKFont != "lxgw-wenkai" ||
+		settings.MonoFont == nil || *settings.MonoFont != "jetbrains-mono" {
+		t.Fatalf("expected font fields updated, got %+v", settings)
+	}
+
+	w = performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(`{"theme":"dark"}`), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH theme: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	settings = decodeSettings(t, w).Data
+	if settings.LatinFont == nil || *settings.LatinFont != "newsreader" ||
+		settings.CJKFont == nil || *settings.CJKFont != "lxgw-wenkai" ||
+		settings.MonoFont == nil || *settings.MonoFont != "jetbrains-mono" {
+		t.Errorf("expected font fields to survive an unrelated PATCH, got %+v", settings)
 	}
 }

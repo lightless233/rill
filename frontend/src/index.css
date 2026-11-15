@@ -139,11 +139,19 @@
   font-weight: 500;
 }
 
+.article-typography {
+  font-family: var(--article-font-family, var(--font-geist));
+}
+
+.article-typography-mono {
+  font-family: var(--article-font-mono, var(--font-geist-mono));
+}
+
 .typeset-article {
-  --typeset-font-body: var(--font-geist);
-  --typeset-font-heading: var(--font-geist);
-  --typeset-font-mono: var(--font-geist-mono);
-  --typeset-size: 15px;
+  --typeset-font-body: var(--article-font-family, var(--font-geist));
+  --typeset-font-heading: var(--article-font-family, var(--font-geist));
+  --typeset-font-mono: var(--article-font-mono, var(--font-geist-mono));
+  --typeset-size: 0.9375rem;
   --typeset-leading: 1.75;
   --typeset-flow: 1.25em;
 }

@@ -71,6 +71,9 @@ export interface Settings {
   article_page_size: number | null;
   theme: string | null;
   auto_mark_read: string | null;
+  latin_font: string | null;
+  cjk_font: string | null;
+  mono_font: string | null;
   updated_at: number;
 }
 
@@ -81,6 +84,9 @@ export interface UpdateSettingsRequest {
   article_page_size?: number;
   theme?: string;
   auto_mark_read?: string;
+  latin_font?: string;
+  cjk_font?: string;
+  mono_font?: string;
 }
 
 // API response wrappers
