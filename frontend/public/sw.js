@@ -1,8 +1,9 @@
-const CACHE_NAME = "fusion-static-v2";
+const CACHE_NAME = "rill-static-v1";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/manifest.json",
+  "/favicon.svg",
   "/favicon.ico",
   "/icon-96.png",
   "/icon-192.png",

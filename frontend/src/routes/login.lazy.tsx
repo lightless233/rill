@@ -76,12 +76,12 @@ function LoginPage() {
         <div className="flex flex-col items-center gap-2">
           <img
             src="/icon-96.png"
-            alt={t("common.fusionLogo")}
+            alt={t("common.appLogo")}
             width={48}
             height={48}
             className="h-12 w-12 rounded-xl"
           />
-          <h1 className="text-2xl font-bold">Fusion</h1>
+          <h1 className="text-2xl font-bold">Rill</h1>
           <p className="text-sm text-muted-foreground">
             {t("login.enterPassword")}
           </p>

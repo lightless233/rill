@@ -371,13 +371,13 @@ function AboutContent() {
     <div className="flex h-full flex-col items-center justify-center gap-4 pb-8">
       <img
         src="/icon-96.png"
-        alt={t("common.fusionLogo")}
+        alt={t("common.appLogo")}
         width={64}
         height={64}
         className="h-16 w-16 rounded-2xl"
       />
       <div className="text-center">
-        <h3 className="text-xl font-semibold">Fusion</h3>
+        <h3 className="text-xl font-semibold">Rill</h3>
         <p className="mt-1 text-xs text-muted-foreground">{__APP_VERSION__}</p>
         <p className="mt-1.5 text-sm text-muted-foreground">
           {t("settings.about.description")}
@@ -400,7 +400,7 @@ function AboutContent() {
           </Button>
         )}
         <a
-          href="https://github.com/0x2e/fusion"
+          href="https://github.com/lightless233/rill"
           target="_blank"
           rel="noopener noreferrer"
           className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -409,7 +409,7 @@ function AboutContent() {
           {t("settings.about.github")}
         </a>
         <a
-          href="https://github.com/0x2e/fusion/issues"
+          href="https://github.com/lightless233/rill/issues"
           target="_blank"
           rel="noopener noreferrer"
           className={buttonVariants({ variant: "outline", size: "sm" })}
