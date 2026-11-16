@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/0x2E/fusion/internal/config"
+	"github.com/0x2E/fusion/internal/eventhub"
 	"github.com/0x2E/fusion/internal/handler"
 	"github.com/0x2E/fusion/internal/pull"
 	"github.com/0x2E/fusion/internal/store"
@@ -44,11 +45,17 @@ func run() error {
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	hub := eventhub.New()
+	defer hub.Close()
+
 	puller := pull.NewWithContext(sigCtx, st, cfg)
+	puller.SetFeedsChanged(hub.Notify)
+
 	h, err := handler.New(st, cfg, puller)
 	if err != nil {
 		return err
 	}
+	h.SetEventHub(hub)
 	r := h.SetupRouter()
 
 	addr := ":" + strconv.Itoa(cfg.Port)
@@ -81,6 +88,10 @@ func run() error {
 	g.Go(func() error {
 		<-ctx.Done()
 		slog.Info("shutting down")
+
+		// Event streams are long-lived; close their subscriber channels before
+		// asking the HTTP server to drain otherwise active connections.
+		hub.Close()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()

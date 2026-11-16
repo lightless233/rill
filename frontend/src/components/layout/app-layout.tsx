@@ -11,6 +11,7 @@ import { EditFeedDialog } from "@/components/feed/edit-feed-dialog";
 import { ImportOpmlDialog } from "@/components/feed/import-opml-dialog";
 import { ShortcutsDialog } from "@/components/layout/shortcuts-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard";
+import { useFeedEvents } from "@/hooks/use-feed-events";
 import { useI18n } from "@/lib/i18n";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useUIStore } from "@/store/ui";
@@ -27,6 +28,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // Register global keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Keep sidebar unread counts current while the authenticated shell is open.
+  useFeedEvents();
 
   // Close mobile sidebar on navigation
   const location = useLocation();

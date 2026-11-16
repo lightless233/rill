@@ -11,6 +11,7 @@ import (
 
 	"github.com/0x2E/fusion/internal/auth"
 	"github.com/0x2E/fusion/internal/config"
+	"github.com/0x2E/fusion/internal/eventhub"
 	"github.com/0x2E/fusion/internal/store"
 	"github.com/0x2E/fusion/internal/translator"
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,7 @@ type Handler struct {
 	oidcAuth     *auth.OIDCAuthenticator // nil when OIDC is disabled
 	limiter      *loginLimiter
 	shareLimiter *loginLimiter
+	eventHub     *eventhub.Hub
 	lastSweep    int64
 
 	refreshAllMu      sync.Mutex
@@ -95,6 +97,12 @@ func New(store *store.Store, config *config.Config, puller interface {
 	}
 
 	return h, nil
+}
+
+// SetEventHub installs the process-local feed-change notification source used
+// by the authenticated event stream.
+func (h *Handler) SetEventHub(hub *eventhub.Hub) {
+	h.eventHub = hub
 }
 
 func (h *Handler) SetupRouter() *gin.Engine {
@@ -166,6 +174,8 @@ func (h *Handler) SetupRouter() *gin.Engine {
 
 			auth.GET("/settings", h.getSettings)
 			auth.PATCH("/settings", h.updateSettings)
+
+			auth.GET("/events", h.getEvents)
 
 			auth.POST("/shares", h.createShare)
 

@@ -20,15 +20,16 @@ import (
 const minScheduleDelay = time.Second
 
 type Puller struct {
-	baseCtx     context.Context
-	store       *store.Store
-	config      *config.Config
-	logger      *slog.Logger
-	interval    time.Duration
-	timeout     time.Duration
-	maxBackoff  time.Duration
-	concurrency *semaphore.Weighted
-	wake        chan struct{}
+	baseCtx      context.Context
+	store        *store.Store
+	config       *config.Config
+	logger       *slog.Logger
+	interval     time.Duration
+	timeout      time.Duration
+	maxBackoff   time.Duration
+	concurrency  *semaphore.Weighted
+	wake         chan struct{}
+	feedsChanged func()
 }
 
 func (p *Puller) effectiveInterval(feed *model.Feed) time.Duration {
@@ -58,6 +59,18 @@ func NewWithContext(baseCtx context.Context, st *store.Store, cfg *config.Config
 		maxBackoff:  time.Duration(cfg.PullMaxBackoff) * time.Second,
 		concurrency: semaphore.NewWeighted(int64(cfg.PullConcurrency)),
 		wake:        make(chan struct{}, 1),
+	}
+}
+
+// SetFeedsChanged installs the process-local notification callback used after
+// a pull commits new items. It must be called before Start or any manual pull.
+func (p *Puller) SetFeedsChanged(fn func()) {
+	p.feedsChanged = fn
+}
+
+func (p *Puller) notifyFeedsChanged() {
+	if p.feedsChanged != nil {
+		p.feedsChanged()
 	}
 }
 
@@ -302,6 +315,11 @@ func (p *Puller) pullFeed(parentCtx context.Context, feed *model.Feed) {
 	if err != nil {
 		p.logger.Error("failed to batch create items", "feed_id", feed.ID, "error", err)
 		return
+	}
+	if newCount > 0 {
+		// BatchCreateItemsIgnore commits before returning, so the new unread
+		// rows are visible to the feed-count query triggered by this signal.
+		p.notifyFeedsChanged()
 	}
 
 	if err := p.store.UpdateFeedFetchSuccess(feed.ID, store.UpdateFeedFetchSuccessParams{

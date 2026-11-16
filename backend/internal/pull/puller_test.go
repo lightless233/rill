@@ -15,6 +15,101 @@ import (
 	"github.com/0x2E/fusion/internal/store"
 )
 
+func TestRefreshFeedNotifiesOnlyWhenNewItemsCommit(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&requestCount, 1)
+		if count > 1 {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Demo</title><link>https://example.com</link>
+<item><guid>g1</guid><title>Item</title><link>https://example.com/1</link></item>
+</channel></rss>`)
+	}))
+	defer server.Close()
+
+	feed, err := st.CreateFeed(1, "Feed A", server.URL, "", "", nil)
+	if err != nil {
+		t.Fatalf("create feed: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       5,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+	var notifications atomic.Int64
+	p.SetFeedsChanged(func() { notifications.Add(1) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := p.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+	if got := notifications.Load(); got != 1 {
+		t.Fatalf("notifications after new item = %d, want 1", got)
+	}
+
+	if err := p.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("second refresh: %v", err)
+	}
+	if got := notifications.Load(); got != 1 {
+		t.Fatalf("notifications after 304 = %d, want 1", got)
+	}
+}
+
+func TestRefreshFeedDoesNotNotifyOnFailure(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer st.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	feed, err := st.CreateFeed(1, "Feed A", server.URL, "", "", nil)
+	if err != nil {
+		t.Fatalf("create feed: %v", err)
+	}
+
+	p := New(st, &config.Config{
+		PullInterval:      1800,
+		PullTimeout:       5,
+		PullConcurrency:   1,
+		PullMaxBackoff:    604800,
+		AllowPrivateFeeds: true,
+	})
+	var notifications atomic.Int64
+	p.SetFeedsChanged(func() { notifications.Add(1) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := p.RefreshFeed(ctx, feed.ID); err != nil {
+		t.Fatalf("refresh returned error: %v", err)
+	}
+	if got := notifications.Load(); got != 0 {
+		t.Fatalf("notifications after failure = %d, want 0", got)
+	}
+}
+
 func TestRefreshFeedPreservesValidatorsWhen304OmitHeaders(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := store.New(dbPath)

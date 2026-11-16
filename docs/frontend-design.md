@@ -72,6 +72,11 @@ obligation in addition to the server's authoritative `410`.
   - cursor-based pagination for items and bookmarks (opaque `next_cursor` passed as the `before` query param; `next_cursor` is null when no more pages exist)
   - optimistic read/unread updates
   - cache invalidation after mutations
+- While `AppLayout` is mounted, one authenticated `/api/events` SSE stream
+  invalidates only the feeds query on `ready` and `feeds_changed`. Sidebar and
+  group unread totals update through the existing derived feed-count path; the
+  open article list is deliberately not invalidated. Reconnects refetch the
+  feeds query to recover missed signals.
 - Zustand stores transient UI state (dialogs, mobile sidebar, edit targets).
   The preferences store is the exception: it is a localStorage-backed local
   cache of the user's synced settings (`lib/settings-sync.ts` pulls the

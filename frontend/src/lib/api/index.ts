@@ -1,4 +1,5 @@
 import { API_BASE, api, parseAPIError } from "./client";
+import { readSSEStream, type SSEEventHandler } from "./sse";
 import type {
   APIResponse,
   ListResponse,
@@ -188,7 +189,7 @@ export interface ArticleBlockStreamCallbacks {
 async function streamSSEEvents(
   path: string,
   body: unknown,
-  onEvent: (eventName: string, payload: Record<string, unknown>) => void,
+  onEvent: SSEEventHandler,
   signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -204,66 +205,27 @@ async function streamSSEEvents(
   if (!response.ok) {
     throw await parseAPIError(path, response);
   }
-  if (!response.body) {
-    throw new Error("Empty response stream");
+  await readSSEStream(response, onEvent);
+}
+
+async function streamSSEGet(
+  path: string,
+  onEvent: SSEEventHandler,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Accept: "text/event-stream",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await parseAPIError(path, response);
   }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  const dispatchEventBlock = (rawBlock: string) => {
-    const normalized = rawBlock.replace(/\r\n/g, "\n");
-    let eventName = "message";
-    const dataLines: string[] = [];
-
-    for (const line of normalized.split("\n")) {
-      if (!line || line.startsWith(":")) continue;
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trimStart());
-      }
-    }
-
-    if (dataLines.length === 0) return;
-    const payload = JSON.parse(dataLines.join("\n")) as Record<
-      string,
-      unknown
-    >;
-    if (eventName === "error") {
-      throw new Error(
-        typeof payload.error === "string" ? payload.error : "Stream failed",
-      );
-    }
-    onEvent(eventName, payload);
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let boundary: number;
-      while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
-        const match = buffer.slice(boundary).match(/^\r?\n\r?\n/);
-        const sepLen = match ? match[0].length : 2;
-        const block = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + sepLen);
-        if (block.trim()) {
-          dispatchEventBlock(block);
-        }
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer.trim()) {
-      dispatchEventBlock(buffer);
-    }
-  } finally {
-    reader.releaseLock();
-  }
+  await readSSEStream(response, onEvent);
 }
 
 // Translation APIs
@@ -391,6 +353,12 @@ export const searchAPI = {
 // App APIs
 export const appAPI = {
   getInfo: () => api.get<APIResponse<AppInfoResponse>>("/app"),
+};
+
+// Authenticated server-sent event stream.
+export const eventsAPI = {
+  stream: (onEvent: SSEEventHandler, signal?: AbortSignal) =>
+    streamSSEGet("/events", onEvent, signal),
 };
 
 // Public share APIs

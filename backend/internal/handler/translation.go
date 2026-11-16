@@ -1,14 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/0x2E/fusion/internal/model"
@@ -205,29 +203,6 @@ func (h *Handler) loadConfiguredAIConfig(c *gin.Context) (translator.Config, boo
 	}, true
 }
 
-func startSSEStream(w http.ResponseWriter) func(eventName string, payload any) error {
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	rc := http.NewResponseController(w)
-	return func(eventName string, payload any) error {
-		// Server-wide WriteTimeout (30s in cmd/fusion) applies from header read;
-		// extend per chunk so long article streams do not cut off mid-flight.
-		_ = rc.SetWriteDeadline(time.Now().Add(3 * time.Minute))
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, data); err != nil {
-			return err
-		}
-		return rc.Flush()
-	}
-}
-
 type listTranslationItemRequest struct {
 	ItemID  int64  `json:"item_id"`
 	Title   string `json:"title"`
@@ -418,7 +393,7 @@ func (h *Handler) translateItems(c *gin.Context) {
 		missCount++
 	}
 
-	sendEvent := startSSEStream(c.Writer)
+	sendEvent, _ := startSSEStream(c.Writer)
 	modelName := cfg.Model
 	if err := sendEvent("meta", gin.H{"model": modelName, "total": len(req.Items)}); err != nil {
 		return
@@ -547,7 +522,7 @@ func (h *Handler) translateArticle(c *gin.Context) {
 		}
 	}
 
-	sendEvent := startSSEStream(c.Writer)
+	sendEvent, _ := startSSEStream(c.Writer)
 
 	totalCount := len(segments)
 	if strings.TrimSpace(req.Title) != "" {
@@ -701,7 +676,7 @@ func (h *Handler) summarizeArticle(c *gin.Context) {
 		}
 	}
 
-	sendEvent := startSSEStream(c.Writer)
+	sendEvent, _ := startSSEStream(c.Writer)
 
 	if cached != nil {
 		_ = sendEvent("meta", map[string]any{

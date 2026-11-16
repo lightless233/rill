@@ -142,7 +142,7 @@ func (h *Handler) translateArticleBlocks(c *gin.Context) {
 		states = append(states, state)
 	}
 
-	sendEvent := startSSEStream(c.Writer)
+	sendEvent, _ := startSSEStream(c.Writer)
 	total := len(states)
 	if req.TranslateTitle && title != "" {
 		total++

@@ -31,9 +31,10 @@ choices that are not obvious from the file list:
 Directory structure mirrors `backend/` on disk — browse it directly. The
 responsibilities worth knowing that names do not convey: `pull` owns
 fetch/parse/backoff orchestration while `pullpolicy` is the pure
-decision logic; `internal/pkg/httpc` is the outbound HTTP client with
-SSRF guards (private-network blocking) built in; `store` embeds and
-applies the SQL migrations.
+decision logic; `eventhub` is the process-local fan-out for live feed-change
+signals; `internal/pkg/httpc` is the outbound HTTP client with SSRF guards
+(private-network blocking) built in; `store` embeds and applies the SQL
+migrations.
 
 ## 5. Database schema (current)
 
@@ -130,6 +131,16 @@ frontend's global `401` redirect cannot fire, and expired shares scrub their
 content while retaining a token/expiry tombstone. Passcodes are bcrypt-hashed
 and attempt-limited per token plus client IP; see
 [Spec 003](specs/003-2026-11-16-article-sharing.md).
+
+### Live feed-change events
+
+The pull worker sends a process-local `eventhub` signal after
+`BatchCreateItemsIgnore` commits a positive number of new items. The
+authenticated `/api/events` SSE handler fans that signal out; it never carries
+counts or article data. Clients refetch `GET /api/feeds`, keeping the existing
+SQL count query authoritative. The hub is in-memory and assumes the current
+single-process deployment; it does not provide replay or multi-replica
+delivery. See [Spec 004](specs/004-2026-11-16-live-unread-counts.md).
 
 ## 8. Feed pull strategy
 

@@ -30,6 +30,12 @@ disagree, the code wins — fix the page.
   session middleware so a recipient needs no Rill account. Bypassing the
   session does not bypass expiry, passcode, attempt limiting or sanitization.
   Public share responses send `Cache-Control: no-store`.
+- Live feed updates use the authenticated `GET /api/events` SSE stream. It is a
+  signal channel, not a data source: `ready` and `feeds_changed` carry empty
+  objects, and clients refetch `GET /api/feeds` for authoritative counts. The
+  stream sends comment heartbeats and uses `Cache-Control: no-cache`. A pull
+  emits `feeds_changed` only when it commits at least one new item; 304s,
+  zero-new-item pulls and failures do not emit.
 
 ## Response envelopes
 
