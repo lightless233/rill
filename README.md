@@ -94,7 +94,9 @@ Most users only need one setting to get started:
 Then configure based on your goal:
 
 - Run locally or on a home server
-  - Optional: `FUSION_PORT`, `FUSION_DB_PATH`
+  - Optional: `FUSION_PORT`, `FUSION_DB_PATH`, `FUSION_LISTEN_HOST`
+  - `FUSION_LISTEN_HOST=127.0.0.1` keeps a directly run binary off other
+    interfaces; leave it unset behind a Docker/Caddy proxy
 - Expose Fusion behind a reverse proxy
   - Configure: `FUSION_CORS_ALLOWED_ORIGINS`, `FUSION_TRUSTED_PROXIES`
 - Use mobile/desktop Fever clients (Reeder, Unread, FeedMe)

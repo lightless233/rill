@@ -9,9 +9,12 @@ import (
 )
 
 type Config struct {
-	DBPath        string
-	Password      string // Plaintext password from env
-	Port          int
+	DBPath   string
+	Password string // Plaintext password from env
+	Port     int
+	// ListenHost is the HTTP bind address. Empty means all interfaces.
+	// A loopback value is only useful when the process is directly reachable;
+	// behind a Docker network it makes the service unreachable to the proxy.
 	ListenHost    string
 	FeverUsername string // Username used to derive Fever API key.
 

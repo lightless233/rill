@@ -52,6 +52,33 @@ func TestLoadUsesDefaultPullMaxBackoff(t *testing.T) {
 	}
 }
 
+func TestLoadListenHost(t *testing.T) {
+	t.Run("defaults to all interfaces", func(t *testing.T) {
+		t.Setenv("FUSION_PASSWORD", "secret")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() failed: %v", err)
+		}
+		if cfg.ListenHost != "" {
+			t.Fatalf("expected empty ListenHost, got %q", cfg.ListenHost)
+		}
+	})
+
+	t.Run("trims an explicit host", func(t *testing.T) {
+		t.Setenv("FUSION_PASSWORD", "secret")
+		t.Setenv("FUSION_LISTEN_HOST", " 127.0.0.1 ")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() failed: %v", err)
+		}
+		if cfg.ListenHost != "127.0.0.1" {
+			t.Fatalf("expected 127.0.0.1, got %q", cfg.ListenHost)
+		}
+	})
+}
+
 func TestLoadFeverUsername(t *testing.T) {
 	t.Run("uses default username", func(t *testing.T) {
 		t.Setenv("FUSION_PASSWORD", "secret")
