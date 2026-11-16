@@ -37,3 +37,7 @@
   maintenance scope and review evidence for the Rill fork
 - [001 Plan](plans/001-2026-11-14-maintainability-baseline.md): implementation
   units and integration order for that scope
+- [002 Spec](specs/002-2026-11-16-list-translation.md): automatic article-list
+  translation modes, batch SSE contract and settings-schema decision
+- [002 Plan](plans/002-2026-11-16-list-translation.md): implementation units and
+  acceptance for list translation
