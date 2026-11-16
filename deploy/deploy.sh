@@ -14,6 +14,7 @@ fi
 
 ALLOW_DIRTY=0
 SKIP_BUILD=0
+BACKUP_DB=0
 TAG_OVERRIDE=""
 
 while [ $# -gt 0 ]; do
@@ -26,18 +27,24 @@ while [ $# -gt 0 ]; do
       SKIP_BUILD=1
       shift
       ;;
+    --backup-db)
+      BACKUP_DB=1
+      shift
+      ;;
     --tag)
       TAG_OVERRIDE="${2:?--tag requires a value}"
       shift 2
       ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./deploy/deploy.sh [--tag TAG] [--allow-dirty] [--skip-build]
+Usage: ./deploy/deploy.sh [--tag TAG] [--allow-dirty] [--skip-build] [--backup-db]
 
 Builds the Fusion binary + Docker image for linux/amd64 (configurable via
-DEPLOY_PLATFORM), streams the image over SSH to DEPLOY_REMOTE_DIR, backs up
-the SQLite database, updates compose.yaml and RILL_IMAGE in remote .env,
+DEPLOY_PLATFORM), streams the image over SSH to DEPLOY_REMOTE_DIR,
+updates compose.yaml and RILL_IMAGE in remote .env,
 and waits until the container reports healthy.
+
+Database backups are skipped unless --backup-db is explicitly supplied.
 
 Configure connection settings via deploy/.env.deploy (gitignored) or env vars.
 EOF
@@ -114,10 +121,11 @@ scp $SSH_OPTS "$SCRIPT_DIR/compose.yaml" "${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_D
 
 echo "Deploying on ${DEPLOY_SSH_TARGET}:${DEPLOY_REMOTE_DIR}..."
 # shellcheck disable=SC2086
-ssh $SSH_OPTS "$DEPLOY_SSH_TARGET" sh -eu -s -- "$DEPLOY_REMOTE_DIR" "$FULL_IMAGE" "$TAG_SUFFIX" <<'REMOTE_SH'
+ssh $SSH_OPTS "$DEPLOY_SSH_TARGET" sh -eu -s -- "$DEPLOY_REMOTE_DIR" "$FULL_IMAGE" "$TAG_SUFFIX" "$BACKUP_DB" <<'REMOTE_SH'
 remote_dir="$1"
 full_image="$2"
 tag_suffix="$3"
+backup_db="$4"
 
 cd "$remote_dir"
 
@@ -125,7 +133,7 @@ if [ -f compose.yaml ]; then
   docker compose -f compose.yaml stop fusion || true
 fi
 
-if ls data/fusion.db* >/dev/null 2>&1; then
+if [ "$backup_db" -eq 1 ] && ls data/fusion.db* >/dev/null 2>&1; then
   backup_dir="$remote_dir/backups/pre-${tag_suffix}-$(date +%Y%m%dT%H%M%S)"
   mkdir -p "$backup_dir"
   cp -a data/fusion.db* "$backup_dir/"
