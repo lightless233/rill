@@ -39,6 +39,10 @@ new rows live.
 - On initial connection and every reconnect, the frontend performs one feeds
   refetch. This catches up after server restarts, network loss or suspended
   tabs without requiring event replay.
+- A notification must start a genuinely fresh feeds request. The client
+  cancels any in-flight feeds request and creates/refetches the query even when
+  the first observer has not mounted yet; relying on an invalidation that
+  reuses the notification-era request can leave stale counts.
 - The event stream is owned by the authenticated `AppLayout`. Login and public
   share pages do not connect.
 - No database migration, table, shared counter or new persisted state.
@@ -85,8 +89,10 @@ data: {}
 ### Frontend behavior
 
 - One authenticated event hook runs while `AppLayout` is mounted.
-- On `ready`, `feeds_changed`, or a successful reconnect, invalidate the feeds
-  query. Do not invalidate the article list, article detail, bookmarks,
+- On `ready`, `feeds_changed`, or a successful reconnect, mark the feeds query
+  stale, cancel any in-flight feeds request, and start a fresh feeds fetch.
+  This must also work when the first feeds observer has not mounted yet. Do not
+  invalidate or refetch the article list, article detail, bookmarks,
   translations or settings queries.
 - Sidebar feed counts, group totals and the all-feed total update through the
   existing derived count path.

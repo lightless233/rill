@@ -101,9 +101,13 @@ Change:
   fetch with `credentials: include`.
 - Add a `useFeedEvents` hook mounted once in `AppLayout`.
 - On stream connection (the `ready` event or successful response) and on every
-  `feeds_changed` event, invalidate only the feeds query.
-- Do not invalidate item lists, article details, bookmarks, translations,
-  settings or app info.
+  `feeds_changed` event, mark the feeds query stale, cancel any in-flight feeds
+  request, and start a fresh feeds fetch. `fetchQuery` is required as a
+  fallback because `invalidateQueries` alone does nothing when the first feeds
+  observer has not mounted yet, and a notification-triggered reload must not
+  reuse a request that started before the notification.
+- Do not invalidate or refetch item lists, article details, bookmarks,
+  translations, settings or app info.
 - Reconnect with bounded exponential backoff and reset the backoff after the
   connection succeeds.
 - Stop on `401` and let the existing global unauthorized flow handle the
@@ -119,8 +123,10 @@ Primary scope: `frontend/src/lib/api/`, a new events hook,
 and focused parser/hook tests where the project’s test setup supports them.
 
 Completion evidence: a `feeds_changed` event refetches the feed list and
-updates sidebar and group totals; no article-list cache is touched; reconnect
-triggers a catch-up refetch; 401 does not loop; unmount closes the stream.
+updates sidebar and group totals, including when it arrives before the first
+feeds observer or while the first feeds request is still pending; no
+article-list cache is touched; reconnect triggers a catch-up refetch; 401 does
+not loop; unmount closes the stream.
 
 ### T4 — Deployment, documentation and acceptance
 
@@ -158,7 +164,8 @@ Change:
 - Add Spec/Plan 004 to the work-item index in `docs/README.md`.
 - Verify:
   - backend hub, puller-notification and SSE-handler tests;
-  - frontend parser/hook tests if applicable;
+  - frontend parser/hook tests, including the no-observer and in-flight
+    first-fetch race;
   - frontend typecheck, lint, unit tests, i18n and build;
   - browser flow with two authenticated tabs: a new item updates both sidebars
     without reload; a 304/zero-new-item pull does not; reconnect catches up;

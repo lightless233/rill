@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { APIError, eventsAPI } from "@/lib/api";
 import { isAbortError } from "@/lib/query-status";
-import { queryKeys } from "@/queries/keys";
+import { refreshFeedsQuery } from "@/queries/feeds";
 
 const INITIAL_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
@@ -26,7 +26,10 @@ export function useFeedEvents() {
     let retryTimer: number | undefined;
 
     const invalidateFeeds = () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.feeds.list() });
+      void refreshFeedsQuery(queryClient).catch(() => {
+        // A failed refetch is recovered by the next event or reconnect; the
+        // global 401 handler owns session failures.
+      });
     };
 
     const scheduleReconnect = () => {

@@ -20,6 +20,21 @@ export const feedQueries = {
     }),
 };
 
+/**
+ * Refetches feeds without reusing a pending request that may predate the
+ * notification. fetchQuery also creates the query when the first sidebar
+ * observer has not mounted yet, which invalidateQueries alone cannot do.
+ */
+export async function refreshFeedsQuery(qc: QueryClient): Promise<void> {
+  const query = feedQueries.list();
+  void qc.invalidateQueries({
+    queryKey: query.queryKey,
+    refetchType: "none",
+  });
+  await qc.cancelQueries({ queryKey: query.queryKey });
+  await qc.fetchQuery({ ...query, staleTime: 0 });
+}
+
 export function useFeeds() {
   return useQuery(feedQueries.list());
 }
