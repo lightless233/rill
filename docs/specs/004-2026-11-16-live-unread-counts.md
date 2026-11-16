@@ -100,8 +100,14 @@ data: {}
 
 ### Deployment behavior
 
-The event stream must survive the production path:
+The event stream must survive each production path separately:
 
+- The current `fusion.43-156-28-81.sslip.io` entry resolves directly to the
+  origin and does not pass through Cloudflare. It verifies Caddy and the
+  application, but it is not evidence for Cloudflare behavior.
+- The new `rill.lightless.me` entry is Cloudflare-proxied. Cloudflare
+  verification requires the response to carry `server: cloudflare` and a
+  `CF-Ray` header and the event stream to work on that entry point.
 - Caddy reverse proxy streaming must not buffer the response. If the default
   proxy behavior buffers it, set a negative `flush_interval` or equivalent.
 - Response compression must not hold small SSE frames until a buffer fills.
@@ -137,5 +143,8 @@ The event stream must survive the production path:
   no endless reconnect loop.
 - Login and public share pages never open `/api/events`.
 - Existing translation/summary SSE streams continue to work unchanged.
-- Backend tests, frontend tests, typecheck, lint, i18n validation, build and a
-  browser test through the deployed Caddy/Cloudflare path pass.
+- Backend tests, frontend tests, typecheck, lint, i18n validation and build
+  pass.
+- A browser test through the direct Caddy path passes. The Cloudflare-proxied
+  `rill.lightless.me` path is verified separately after it is active; the
+  direct sslip result is not accepted as Cloudflare evidence.

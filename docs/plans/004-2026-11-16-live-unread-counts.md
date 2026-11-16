@@ -31,7 +31,9 @@ Change:
 - Inject a notification callback or hub reference into the puller. Set it up in
   `cmd/fusion` before the puller starts.
 - In the successful new-item path, after `BatchCreateItemsIgnore`, notify only
-  when the inserted count is greater than zero.
+  when `err == nil && newCount > 0`. That function commits its insert
+  transaction before returning the count, so the notification is never sent
+  for uncommitted rows.
 - Do not notify for `304`, zero-new-item success, fetch errors, name/site URL
   backfills, or feed CRUD.
 - Notification must be asynchronous/non-blocking with respect to the pull.
@@ -52,8 +54,12 @@ have changed.
 Change:
 
 - Register `GET /api/events` inside the authenticated API group.
-- Write `text/event-stream; charset=utf-8` plus `Cache-Control: no-cache` and
-  `X-Accel-Buffering: no`.
+- Reuse the existing SSE writer in `backend/internal/handler/translation.go`
+  (`startSSEStream`): it already owns the SSE headers, `X-Accel-Buffering`,
+  response flushing and per-write deadline extension. Refactor it into a small
+  shared writer/helper if needed, and add only the raw comment heartbeat path
+  that the existing event-only writer lacks. Do not introduce a second SSE
+  response implementation.
 - Immediately send and flush `event: ready` with `{}`.
 - Forward hub notifications as `event: feeds_changed` with `{}`.
 - Send a comment heartbeat on a fixed interval below the server write timeout
@@ -72,8 +78,9 @@ tests.
 
 Completion evidence: an authenticated client receives `ready` immediately and
 `feeds_changed` after a notification; the response headers and event framing
-match the Spec; unauthenticated requests follow the existing 401 behavior;
-disconnect unsubscribes; shutdown does not hang on open streams.
+match the Spec; both events go through the shared SSE writer; unauthenticated
+requests follow the existing 401 behavior; disconnect unsubscribes; shutdown
+does not hang on open streams.
 
 ### T3 — Consume the stream in the frontend
 
@@ -82,9 +89,16 @@ refetches that query when the server has new items.
 
 Change:
 
-- Add a GET SSE helper beside the existing translation stream parser, reusing
-  the same event-block parsing where practical. It must support aborting,
-  comment heartbeats and an authenticated fetch with `credentials: include`.
+- Extract the event-block parsing from the existing `streamSSEEvents` helper in
+  `frontend/src/lib/api/index.ts` and reuse it for both the existing POST
+  streams and the new authenticated GET stream. Add a GET variant instead of a
+  second parser. Reuse `parseAPIError` for the initial response so 401 handling
+  stays consistent.
+- Keep the fetch-based stream, not `EventSource`: fetch lets the hook reuse the
+  existing HTTP error/401 handling, so reconnect/backoff must be implemented
+  explicitly rather than relying on EventSource's automatic reconnect.
+- The GET helper must support aborting, comment heartbeats and an authenticated
+  fetch with `credentials: include`.
 - Add a `useFeedEvents` hook mounted once in `AppLayout`.
 - On stream connection (the `ready` event or successful response) and on every
   `feeds_changed` event, invalidate only the feeds query.
@@ -116,12 +130,25 @@ records.
 
 Change:
 
+- Verify the stream through the actual entry point that is deployed, and keep
+  the two paths separate:
+  - **Current direct-origin path** (`fusion.43-156-28-81.sslip.io`): this
+    resolves directly to `43.156.28.81` and has no Cloudflare `CF-Ray`. It can
+    verify Caddy stream flushing, compression behavior, authentication and
+    disconnect/shutdown handling, but it must not be reported as a Cloudflare
+    acceptance result.
+  - **New proxied path** (`rill.lightless.me`): after the Caddy config and TLS
+    certificate are deployed, verify the response carries `server: cloudflare`
+    and a `CF-Ray` header, that the stream delivers `ready` and
+    `feeds_changed` promptly, and that the heartbeat keeps it open. Until that
+    path is active, record Cloudflare verification as pending, not passed.
 - Verify the stream through the production proxy path:
   - Caddy must flush SSE frames as they are written. If the current proxy
     buffers, add a negative `flush_interval` or equivalent.
   - Compression must not hold small SSE frames. If the current `encode`
     directive buffers `text/event-stream`, exclude that content type.
-  - Confirm Cloudflare does not close the stream during the heartbeat interval.
+  - Confirm Cloudflare does not close the stream during the heartbeat interval
+    only on the proxied path, not the direct sslip path.
 - Document the event endpoint, event names, authentication behavior,
   reconnect/catch-up rule and non-goals in `docs/api-conventions.md`.
 - Record the event-hub architecture and single-process limitation in
@@ -137,16 +164,20 @@ Change:
     without reload; a 304/zero-new-item pull does not; reconnect catches up;
   - public share and login pages show no `/api/events` request;
   - existing translation/summary SSE flows still work;
-  - the deployed Caddy/Cloudflare path delivers `ready` and `feeds_changed`
-    without buffering.
+  - the direct Caddy path delivers `ready` and `feeds_changed` without
+    buffering;
+  - the proxied `rill.lightless.me` path (once active) also delivers them and
+    includes Cloudflare response evidence; do not substitute the direct sslip
+    result for this check.
 
 Primary scope: deployment proxy configuration, `docs/api-conventions.md`,
 `docs/backend-design.md`, `docs/frontend-design.md`, `docs/README.md`, and
 cross-layer acceptance evidence.
 
-Completion evidence: deployed stream works through the real proxy path; counts
-update without manual refresh; missed events recover on reconnect; existing
-authenticated and public flows are unaffected.
+Completion evidence: deployed stream works through the direct Caddy path and,
+separately, through the active Cloudflare-proxied domain; counts update without
+manual refresh; missed events recover on reconnect; existing authenticated and
+public flows are unaffected.
 
 ## Integration order
 
