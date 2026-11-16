@@ -84,8 +84,10 @@ export function ArticleItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <h3
           className={cn(
-            "article-typography line-clamp-2 text-[15px] leading-snug font-medium",
-            article.unread ? "text-foreground" : "text-muted-foreground",
+            "article-typography line-clamp-2 text-[15px] leading-snug",
+            article.unread
+              ? "font-semibold text-foreground"
+              : "font-normal text-muted-foreground",
           )}
           lang={showChineseTitle ? "zh-CN" : undefined}
         >
@@ -105,7 +107,12 @@ export function ArticleItem({
           </p>
         )}
         <p
-          className="article-typography line-clamp-2 text-sm text-muted-foreground"
+          className={cn(
+            "article-typography line-clamp-2 text-sm",
+            article.unread
+              ? "text-muted-foreground"
+              : "text-muted-foreground/70",
+          )}
           lang={showChineseSummary ? "zh-CN" : undefined}
         >
           {showChineseSummary
