@@ -45,3 +45,7 @@
   article snapshots, optional passcodes and expiry semantics
 - [003 Plan](plans/003-2026-11-16-article-sharing.md): implementation units and
   acceptance for public sharing
+- [004 Spec](specs/004-2026-11-16-live-unread-counts.md): authenticated SSE
+  feed-change signals and live unread counts
+- [004 Plan](plans/004-2026-11-16-live-unread-counts.md): implementation units
+  and acceptance for live unread counts
