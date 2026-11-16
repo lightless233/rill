@@ -65,7 +65,7 @@ import {
 } from "@/store";
 import type { Feed, Item } from "@/lib/api";
 
-const MARK_READ_UNDO_DURATION_MS = 10_000;
+const MARK_READ_UNDO_DURATION_MS = 5_000;
 
 type MarkReadOrigin = {
   feedId: number | null;
