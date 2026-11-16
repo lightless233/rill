@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { filterAfterFeedSelection } from "@/lib/article-filter";
 import { useUrlState } from "@/hooks/use-url-state";
 import { useUIStore } from "@/store";
 import { getFaviconUrl } from "@/lib/api/favicon";
@@ -14,7 +15,7 @@ interface FeedItemProps {
 
 export function FeedItem({ feed }: FeedItemProps) {
   const { t } = useI18n();
-  const { selectedFeedId, setSelectedFeed } = useUrlState();
+  const { selectedFeedId, setSelectedFeed, articleFilter } = useUrlState();
   const { setEditFeedOpen } = useUIStore();
 
   const isSelected = selectedFeedId === feed.id;
@@ -34,7 +35,12 @@ export function FeedItem({ feed }: FeedItemProps) {
     >
       <button
         type="button"
-        onClick={() => setSelectedFeed(feed.id)}
+        onClick={() =>
+          setSelectedFeed(
+            feed.id,
+            filterAfterFeedSelection(articleFilter, feed.unread_count),
+          )
+        }
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <FeedFavicon src={faviconUrl} className="h-4 w-4" />

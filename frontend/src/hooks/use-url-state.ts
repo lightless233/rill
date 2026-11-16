@@ -97,11 +97,12 @@ export function useUrlState() {
   );
 
   const setSelectedFeed = useCallback(
-    (feedId: number | null) => {
+    (feedId: number | null, filter?: ArticleFilter) => {
       navigateToList({
         feedId,
         groupId: null,
         articleId: null,
+        filter,
       });
     },
     [navigateToList],

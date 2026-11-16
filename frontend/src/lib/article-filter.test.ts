@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   articleFilters,
   defaultArticleFilter,
+  filterAfterFeedSelection,
   isArticleFilter,
 } from "./article-filter";
 
@@ -22,5 +23,12 @@ describe("article filter set", () => {
   it("defaults to the unread view", () => {
     expect(defaultArticleFilter).toBe("unread");
     expect(articleFilters).toContain(defaultArticleFilter);
+  });
+
+  it("falls back to all when selecting a feed with no unread articles from unread", () => {
+    expect(filterAfterFeedSelection("unread", 0)).toBe("all");
+    expect(filterAfterFeedSelection("unread", 3)).toBe("unread");
+    expect(filterAfterFeedSelection("all", 0)).toBe("all");
+    expect(filterAfterFeedSelection("starred", 0)).toBe("starred");
   });
 });
