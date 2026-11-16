@@ -327,6 +327,36 @@ export interface BatchCreateFeedsResponse {
   errors: string[] | null;
 }
 
+export interface CreateShareRequest {
+  item_id: number;
+  expires_in_seconds: number;
+  passcode_enabled: boolean;
+  passcode?: string;
+}
+
+export interface CreateShareResponse {
+  token: string;
+  path: string;
+  expires_at: number;
+  passcode?: string;
+}
+
+export interface ShareContentResponse {
+  title: string;
+  content: string;
+  link: string;
+  feed_name: string;
+  pub_date: number;
+  expires_at: number;
+}
+
+export interface ShareProtectedResponse {
+  requires_passcode: true;
+  expires_at: number;
+}
+
+export type ShareAccessResponse = ShareContentResponse | ShareProtectedResponse;
+
 export interface AppInfoResponse {
   pull_interval: number;
   allowed_refresh_intervals: number[];

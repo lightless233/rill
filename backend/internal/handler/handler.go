@@ -28,11 +28,12 @@ type Handler struct {
 		RefreshAll(ctx context.Context) (int, error)
 		Wake()
 	}
-	sessions  map[string]int64        // sessionID -> unix expiry seconds
-	mu        sync.RWMutex            // protects sessions state
-	oidcAuth  *auth.OIDCAuthenticator // nil when OIDC is disabled
-	limiter   *loginLimiter
-	lastSweep int64
+	sessions     map[string]int64        // sessionID -> unix expiry seconds
+	mu           sync.RWMutex            // protects sessions state
+	oidcAuth     *auth.OIDCAuthenticator // nil when OIDC is disabled
+	limiter      *loginLimiter
+	shareLimiter *loginLimiter
+	lastSweep    int64
 
 	refreshAllMu      sync.Mutex
 	refreshAllRunning bool
@@ -64,6 +65,7 @@ func New(store *store.Store, config *config.Config, puller interface {
 		puller:       puller,
 		sessions:     make(map[string]int64),
 		limiter:      newLoginLimiter(config.LoginRateLimit, config.LoginWindow, config.LoginBlock),
+		shareLimiter: newLoginLimiter(5, 15*60, 15*60),
 	}
 
 	if h.allowAnonAPI {
@@ -123,6 +125,10 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			r.GET("/oidc/callback", h.oidcCallback)
 		}
 
+		// Public share access (no session middleware).
+		api.GET("/shares/:token", h.getShare)
+		api.POST("/shares/:token/access", h.accessShare)
+
 		auth := api.Group("")
 		auth.Use(h.authMiddleware())
 		{
@@ -160,6 +166,8 @@ func (h *Handler) SetupRouter() *gin.Engine {
 
 			auth.GET("/settings", h.getSettings)
 			auth.PATCH("/settings", h.updateSettings)
+
+			auth.POST("/shares", h.createShare)
 
 			auth.POST("/translations/lookup", h.lookupTranslation)
 			auth.POST("/translations/items", h.translateItems)

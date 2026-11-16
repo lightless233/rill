@@ -27,6 +27,10 @@ import type {
   OIDCStatusResponse,
   OIDCLoginResponse,
   AppInfoResponse,
+  CreateShareRequest,
+  CreateShareResponse,
+  ShareAccessResponse,
+  ShareContentResponse,
   Settings,
   UpdateSettingsRequest,
   TranslateArticleRequest,
@@ -387,6 +391,23 @@ export const searchAPI = {
 // App APIs
 export const appAPI = {
   getInfo: () => api.get<APIResponse<AppInfoResponse>>("/app"),
+};
+
+// Public share APIs
+export const shareAPI = {
+  create: (data: CreateShareRequest) =>
+    api.post<APIResponse<CreateShareResponse>>("/shares", data),
+
+  get: (token: string) =>
+    api.get<APIResponse<ShareAccessResponse>>(
+      `/shares/${encodeURIComponent(token)}`,
+    ),
+
+  access: (token: string, passcode: string) =>
+    api.post<APIResponse<ShareContentResponse>>(
+      `/shares/${encodeURIComponent(token)}/access`,
+      { passcode },
+    ),
 };
 
 export * from "./types";

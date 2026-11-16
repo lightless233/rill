@@ -9,6 +9,7 @@ import {
   Languages,
   Loader2,
   RotateCw,
+  Share2,
   Sparkles,
   Star,
   X,
@@ -54,6 +55,7 @@ import {
   clampArticleDrawerWidth,
 } from "@/store/ui";
 import type { ArticleViewMode } from "@/lib/translation";
+import { ShareDialog } from "./share-dialog";
 
 export function ArticleDrawer() {
   const { t } = useI18n();
@@ -286,6 +288,11 @@ export function ArticleDrawer() {
     latestWidth: number;
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
+  // Tied to the selected article so navigating to another article closes the
+  // dialog without a state-syncing effect.
+  const [shareArticleId, setShareArticleId] = useState<number | null>(null);
+  const isShareOpen =
+    shareArticleId !== null && shareArticleId === selectedArticleId;
 
   useEffect(() => {
     return () => {
@@ -454,6 +461,16 @@ export function ArticleDrawer() {
                   />
                   {starred ? t("article.action.unstar") : t("article.action.star")}
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShareArticleId(displayedArticle.id)}
+                  disabled={displayedArticle.id <= 0}
+                  className="h-auto gap-1.5 px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground"
+                >
+                  <Share2 className="h-4 w-4" />
+                  {t("article.action.share")}
+                </Button>
                 {safeArticleLink ? (
                   <a
                     href={safeArticleLink}
@@ -593,6 +610,15 @@ export function ArticleDrawer() {
                 <X className="h-[18px] w-[18px] text-muted-foreground" />
               </Button>
             </div>
+
+            {isShareOpen && (
+              <ShareDialog
+                article={displayedArticle}
+                onOpenChange={(open) => {
+                  if (!open) setShareArticleId(null);
+                }}
+              />
+            )}
 
             {/* Content */}
             <ScrollArea className="min-h-0 flex-1">

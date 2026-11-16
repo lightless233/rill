@@ -126,6 +126,21 @@ type ArticleSummary struct {
 	UpdatedAt   int64  `json:"updated_at"`
 }
 
+// ArticleShare is a time-limited public snapshot of an article.
+type ArticleShare struct {
+	ID           int64  `json:"id"`
+	Token        string `json:"token"`
+	ItemID       *int64 `json:"item_id"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Link         string `json:"link"`
+	FeedName     string `json:"feed_name"`
+	PubDate      int64  `json:"pub_date"`
+	PasscodeHash string `json:"-"`
+	ExpiresAt    int64  `json:"expires_at"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
 // Bookmark represents a saved item snapshot.
 type Bookmark struct {
 	ID       int64  `json:"id"`

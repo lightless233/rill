@@ -54,6 +54,12 @@ here, it duplicates the migrations and rots.
 - `bookmarks` — content snapshots; `link` unique; `item_id` and `feed_id`
   are nullable soft associations, so snapshots survive source deletions
   (see migrations 001 and 003 for the rationale).
+- `article_shares` — time-limited public article snapshots. The row owns its
+  title/content/link/feed name/publication date, so deleting the source item
+  or feed does not change an active share. `expires_at` is computed by the
+  server; `passcode_hash` is nullable. Expiry scrubs the article fields and
+  passcode hash but keeps the token and expiry as a tombstone so `410` remains
+  distinguishable from an unknown token (migration 015).
 - `article_block_translations` — independently cached title/body-block
   translations keyed by content hash and target language; lets lazy article
   translation persist partial viewport progress across reopenings.
@@ -113,6 +119,17 @@ separately in `article_block_translations`, so completed visible blocks survive
 reopening without translating the unseen body. The existing full-article
 translation endpoint remains for older clients; the current drawer no longer
 uses it.
+
+### Public article sharing
+
+Sharing is a snapshot, not a live item view or an alternate session. Creation
+is authenticated and copies the item at that moment; the two public read
+endpoints bypass the session middleware. A protected share must not serialize
+article fields until the passcode succeeds, wrong codes use `403` so the
+frontend's global `401` redirect cannot fire, and expired shares scrub their
+content while retaining a token/expiry tombstone. Passcodes are bcrypt-hashed
+and attempt-limited per token plus client IP; see
+[Spec 003](specs/003-2026-11-16-article-sharing.md).
 
 ## 8. Feed pull strategy
 

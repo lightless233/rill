@@ -57,6 +57,13 @@ management (`/feeds`) hosts grouped feed/group CRUD, refresh-all, and
 OPML import/export. Component names map to these areas directly — browse
 `frontend/src/components/` for the implementation.
 
+`/s/<token>` is a standalone public snapshot page. It is exempt from the root
+session guard and settings pull, renders no `AppLayout`/sidebar, and uses the
+same article sanitizer as the drawer. A protected link shows only a passcode
+form until access succeeds. The page schedules clearing from the server's
+`expires_at` and rechecks on visibility/bfcache restore; expiry is a UI
+obligation in addition to the server's authoritative `410`.
+
 ## 5. Data flow
 
 - API layer lives in `frontend/src/lib/api/`

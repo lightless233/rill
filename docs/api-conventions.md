@@ -25,6 +25,11 @@ disagree, the code wins — fix the page.
   `/api/oidc/callback` are registered only when OIDC is configured. Login
   returns `{data: {auth_url}}` for the client to navigate to; the callback
   redirects (307) to `/` on success or `/login?error=oidc_failed` on failure.
+- Public article shares: `POST /api/shares` is authenticated, while
+  `GET /api/shares/:token` and `POST /api/shares/:token/access` bypass the
+  session middleware so a recipient needs no Rill account. Bypassing the
+  session does not bypass expiry, passcode, attempt limiting or sanitization.
+  Public share responses send `Cache-Control: no-store`.
 
 ## Response envelopes
 
@@ -55,8 +60,13 @@ Handlers report failures as `{"error": "<message>"}`:
 
 - `400` — invalid input (message varies)
 - `401` — `"unauthorized"`
-- `404` — `"<resource> not found"`
-- `429` — `"too many login attempts"` (plus `Retry-After`)
+- `403` — public share passcode is wrong; the public page shows an inline
+  error instead of treating this as a session failure
+- `404` — `"<resource> not found"` (also an unknown or malformed share token)
+- `410` — article share expired; the token/expiry tombstone may later be
+  purged, after which the same token becomes `404`
+- `429` — `"too many login attempts"` or `"too many passcode attempts"`
+  (plus `Retry-After`)
 - `500` — `"internal server error"` (details are logged server-side only)
 - `502` — upstream fetch failure (e.g., feed validation upstream DNS, connection, timeout, or non-2xx failure)
 
@@ -114,3 +124,10 @@ Three cases return the status with an empty body instead: unknown routes
   translates only the requested title/block subset and caches title and body
   blocks independently; `meta`, `segment`, `done` and `error` follow the
   existing article translation stream convention.
+- Public share reads are deliberately split. A protected
+  `GET /api/shares/:token` returns only `{requires_passcode: true, expires_at}`
+  and no article fields; the full snapshot is returned only for an unprotected
+  share or after a successful `POST /api/shares/:token/access`. Five wrong
+  passcodes per token and client IP within fifteen minutes produce `429`;
+  success clears that state. Passcodes are four `A-Z0-9` characters,
+  case-insensitive, and never appear in the URL.

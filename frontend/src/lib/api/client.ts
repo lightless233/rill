@@ -2,10 +2,12 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export class APIError extends Error {
   status: number;
+  retryAfter?: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfter?: number) {
     super(message);
     this.status = status;
+    this.retryAfter = retryAfter;
     this.name = "APIError";
   }
 }
@@ -28,9 +30,11 @@ export async function parseAPIError(
   const error = await response
     .json()
     .catch(() => ({ error: "Unknown error" }));
+  const retryAfter = Number(response.headers.get("Retry-After"));
   return new APIError(
     response.status,
     error.error || `HTTP ${response.status}`,
+    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
   );
 }
 

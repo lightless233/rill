@@ -39,7 +39,12 @@ async function hasValidSession(): Promise<boolean> {
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
-    if (location.pathname === "/login") {
+    // Public share links are read-only and must never require a Rill session
+    // or pull the signed-in user's settings.
+    if (
+      location.pathname === "/login" ||
+      location.pathname.startsWith("/s/")
+    ) {
       return;
     }
 
