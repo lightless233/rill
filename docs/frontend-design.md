@@ -96,8 +96,14 @@ The list has an independent `list_translation_mode` preference (`original`,
 `zh`, `bilingual`). It reuses the same translation endpoint, key and model as
 article detail translation, but only translates the title and list excerpt of
 currently loaded pages. With a key configured and no explicit choice, the
-effective default is bilingual; without a key it is original. `original` is the
-manual off switch; it also cancels in-flight list work.
+effective display mode is bilingual; without a key it is original.
+
+List translation is manual. Opening, reloading or paginating a list does not
+start a request by itself. The split header control's main Translate action
+starts or retries the current list; selecting a translated mode from its menu is
+also an explicit trigger. Selecting original turns translation off and cancels
+in-flight work. A mode restored from settings changes presentation only after a
+manual trigger; it does not invoke the translation service.
 
 Bilingual list presentation deliberately follows the article-detail hierarchy:
 the original title/excerpt remains primary, and the Chinese translation follows

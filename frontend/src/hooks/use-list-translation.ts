@@ -21,6 +21,7 @@ interface UseListTranslationOptions {
   articles: Item[];
   mode: ListTranslationMode;
   hasKey: boolean;
+  requested: boolean;
   scopeKey: string;
 }
 
@@ -32,9 +33,10 @@ export function useListTranslation({
   articles,
   mode,
   hasKey,
+  requested,
   scopeKey,
 }: UseListTranslationOptions) {
-  const enabled = mode !== "original" && hasKey;
+  const enabled = requested && mode !== "original" && hasKey;
 
   const requestItems = useMemo(() => {
     if (!enabled) return [];

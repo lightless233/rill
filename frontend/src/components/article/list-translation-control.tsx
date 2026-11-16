@@ -1,11 +1,16 @@
-import { Check, CircleAlert, Languages, Loader2, RotateCw } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  CircleAlert,
+  Languages,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { beginChange, useApplySetting } from "@/hooks/use-apply-setting";
@@ -19,15 +24,17 @@ import { listTranslationModeOptions } from "@/store/preferences";
 import { cn } from "@/lib/utils";
 
 interface ListTranslationControlProps {
+  requested: boolean;
   status: ListTranslationStatus;
   error: string | null;
-  onRetry: () => void;
+  onStart: () => void;
 }
 
 export function ListTranslationControl({
+  requested,
   status,
   error,
-  onRetry,
+  onStart,
 }: ListTranslationControlProps) {
   const { t } = useI18n();
   const applySetting = useApplySetting();
@@ -56,6 +63,15 @@ export function ListTranslationControl({
           : t("article.translation.mode.original"),
   }));
 
+  const handleStart = () => {
+    if (!hasKey) {
+      toast.info(t("article.translation.missingConfig"));
+      setSettingsOpen(true, "translation");
+      return;
+    }
+    onStart();
+  };
+
   const handleModeChange = (nextMode: ListTranslationMode) => {
     if (!hasKey && nextMode !== "original") {
       toast.info(t("article.translation.missingConfig"));
@@ -71,62 +87,79 @@ export function ListTranslationControl({
       () => setListTranslationMode(nextMode),
       () => setListTranslationMode(previous),
     );
+
+    // Selecting a translated mode is an explicit manual trigger. Original
+    // turns the feature off and never starts work.
+    if (nextMode !== "original") {
+      onStart();
+    }
   };
 
+  const triggerTitle = isFailed
+    ? failureMessage
+    : !hasKey
+      ? t("article.translation.missingConfig")
+      : undefined;
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(
-              "gap-1.5 text-xs",
-              isFailed && "border-destructive/40 text-destructive",
-            )}
-            title={isFailed ? failureMessage : undefined}
-            aria-label={t("article.list.translation.label")}
-          >
-            {status === "translating" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : isFailed ? (
-              <CircleAlert className="h-4 w-4" />
-            ) : (
-              <Languages className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">
-              {t("article.list.translation.label")}
-            </span>
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end" className="w-auto">
-        {modeItems.map((item) => (
-          <DropdownMenuItem
-            key={item.value}
-            onClick={() => handleModeChange(item.value)}
-          >
-            <Check
-              className={cn(
-                "h-4 w-4",
-                effectiveMode === item.value
-                  ? "opacity-100"
-                  : "opacity-0",
-              )}
-            />
-            {item.label}
-          </DropdownMenuItem>
-        ))}
-        {isFailed && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onRetry}>
-              <RotateCw className="h-4 w-4" />
-              {t("article.list.translation.retry")}
-            </DropdownMenuItem>
-          </>
+    <div className="flex items-center">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleStart}
+        disabled={!hasKey || effectiveMode === "original" || status === "translating"}
+        title={triggerTitle}
+        aria-label={t("article.list.translation.label")}
+        className={cn(
+          "gap-1.5 rounded-r-none text-xs",
+          isFailed && "border-destructive/40 text-destructive",
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      >
+        {status === "translating" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : isFailed ? (
+          <CircleAlert className="h-4 w-4" />
+        ) : requested ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          <Languages className="h-4 w-4" />
+        )}
+        <span className="hidden sm:inline">
+          {t("article.list.translation.label")}
+        </span>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t("article.list.translation.label")}
+              className="-ml-px rounded-l-none px-1.5"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-auto">
+          {modeItems.map((item) => (
+            <DropdownMenuItem
+              key={item.value}
+              onClick={() => handleModeChange(item.value)}
+            >
+              <Check
+                className={cn(
+                  "h-4 w-4",
+                  effectiveMode === item.value
+                    ? "opacity-100"
+                    : "opacity-0",
+                )}
+              />
+              {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-# 002: Article list automatic translation implementation plan
+# 002: Article list translation implementation plan
 
 Status: implementation complete; aggregate local verification complete (2026-11-16).
 
@@ -129,8 +129,9 @@ request is made.
 
 ### T3 — Add the frontend list translation pipeline
 
-Problem: the list currently has no client-side trigger, cache or cancellation
-mechanism for translations, and automatic work must not block reading.
+Problem: the list currently has no client-side manual trigger, cache or
+cancellation mechanism for translations, and a manual request must not block
+reading. Opening a list or restoring a display mode must not call the upstream.
 
 Change:
 
@@ -138,7 +139,9 @@ Change:
   request/callback shapes. Reuse the existing `streamSSEEvents` transport and
   error parsing; do not add a second SSE reader.
 - Add a list-translation hook used by the article list. It must:
-  - run only when the effective mode is translated and a key is configured;
+  - run only after an explicit manual trigger for the current list scope, in a
+    translated mode, with a key configured; opening a list or restoring a mode
+    alone must not run it;
   - evaluate title and excerpt independently with the Spec’s Latin/no-CJK
     eligibility rule;
   - send bounded batches (frontend batches smaller than the server maximum);
@@ -176,13 +179,15 @@ Primary scope: [API client](../../frontend/src/lib/api/index.ts),
 list-translation hook under `frontend/src/hooks/`, and focused helper/hook
 tests.
 
-Completion evidence: opening a list starts translation; scrolling a new page
-translates only the new page; switching to original aborts current work and
-makes no further requests; no key or all-Chinese content produces no request;
-a failed stream leaves originals visible and exposes retry; a stream that ends
-without `done`, or omits a requested item, is treated as incomplete with the
-missing items retryable; an explicit abort does not show a failure; cached
-content reopens without an upstream call.
+Completion evidence: opening or reloading a list with a configured key and
+stored translated mode sends no request; pressing Translate starts it; scrolling
+a new page after the trigger translates only the new page; switching scope
+requires a new trigger; switching to original aborts current work and makes no
+further requests; no key or all-Chinese content produces no request; a failed
+stream leaves originals visible and exposes retry; a stream that ends without
+`done`, or omits a requested item, is treated as incomplete with the missing
+items retryable; an explicit abort does not show a failure; cached content
+reopens only after the manual trigger and without an upstream call.
 
 ### T4 — Render the list modes and add the control
 
@@ -202,11 +207,16 @@ Change:
   - `original`: current rendering unchanged.
 - Do not create a second color palette, font family or translation-chip style.
   Reuse the existing typography and muted/foreground hierarchy.
-- Add a header control to the left of the split “mark all as read” control, as
-  shown in the user’s screenshot, exposing original/Chinese/bilingual modes.
-  The control must work on mobile without crowding the header.
-- Persist the header control’s changes through the shared save path extracted in
-  T1; do not duplicate PATCH, rollback or generation handling in this component.
+- Add a split header control to the left of the split “mark all as read”
+  control, as shown in the user’s screenshot: a main Translate action starts or
+  retries the current list; a mode menu exposes original/Chinese/bilingual.
+  Selecting a translated mode is an explicit trigger; selecting original stops
+  translation. The control must work on mobile without crowding the header.
+- Persist the mode-menu changes through the shared save path extracted in T1; do
+  not duplicate PATCH, rollback or generation handling in this component.
+- Do not start translation from component mount, route restoration, pagination,
+  or settings synchronization. Only the main action or a translated mode
+  selection may start it.
 - Add `lang` attributes for translated and original text so the existing
   Latin/CJK font settings apply.
 - Add translation status and retry affordances at list level. Do not add
@@ -238,7 +248,7 @@ Change:
 
 - Update API conventions with the new batch endpoint’s SSE envelope, limits,
   error timing and cache behavior.
-- Update the frontend design with the list translation modes, automatic trigger
+- Update the frontend design with the list translation modes, manual trigger
   scope and the rule that bilingual presentation reuses the detail hierarchy.
 - Record the settings-schema decision where the settings table is described:
   one typed nullable column was added; a key-value refactor is a separate work

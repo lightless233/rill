@@ -1,4 +1,4 @@
-# 002: Article list automatic translation
+# 002: Article list translation
 
 Status: implemented; aggregate local verification complete (2026-11-16).
 
@@ -6,20 +6,21 @@ Contract: [implementation plan](../plans/002-2026-11-16-list-translation.md).
 
 ## Goal
 
-When the user opens an article list, non-Chinese titles and list excerpts are
-translated to Simplified Chinese automatically, using the existing translation
-API configuration. The user can switch between original, Chinese-only and
-bilingual presentation. Bilingual presentation follows the existing article
-detail bilingual hierarchy: the original text stays primary and the Chinese
-translation appears below it, visually de-emphasized. Article body translation
-and all existing reading interactions remain unchanged.
+The user can explicitly translate an article list to Simplified Chinese by
+pressing the list Translate action; opening a list must not start translation by
+itself. Translation uses the existing API configuration. The user can switch
+between original, Chinese-only and bilingual presentation. Bilingual
+presentation follows the existing article detail bilingual hierarchy: the
+original text stays primary and the Chinese translation appears below it,
+visually de-emphasized. Article body translation and all existing reading
+interactions remain unchanged.
 
 ## Request source and corrections
 
 The user asked for:
 
-- automatic translation of English titles and list summaries when opening a
-  list;
+- translation of English titles and list summaries on an explicit manual
+  action; opening the list must not trigger it;
 - a manual way to turn translation off;
 - Chinese-only and bilingual display modes;
 - reuse of the existing translation configuration;
@@ -28,8 +29,9 @@ The user asked for:
 - an evaluation of whether the current `settings` table should be replaced by
   a key-value design before adding another preference.
 
-The last two points correct the first proposal and are binding requirements in
-this document.
+The user later corrected the trigger requirement: translation must be manual,
+not automatic on list open. That correction, the bilingual styling requirement
+and the settings-schema question are binding requirements in this document.
 
 ## Existing behavior used as evidence
 
@@ -76,20 +78,31 @@ this document.
     translated mode prompts configuration and leaves the stored mode unchanged;
   - if the key is later cleared, the stored mode is retained but the effective
     mode falls back to `original` until a key is configured again.
-- `original` means “do not automatically translate the list”. It is the manual
-  off switch.
+- `original` means “translation is off”. It is the manual off switch.
 
-### Automatic translation trigger
+### Manual translation trigger
 
-- Translation starts when an article list renders in `zh` or `bilingual` mode
-  with a configured API key.
-- Only the currently loaded page or pages are eligible. When infinite scrolling
-  loads another page, its newly loaded items are translated. The application
-  must not translate the entire article history in advance.
+- Opening an article list, changing page, or restoring a previously stored
+  display mode must not start a translation request. The list shows original
+  content until the user presses the Translate action for that list scope.
+- Pressing Translate uses the current display mode. With a configured key and
+  no explicit mode choice, that mode is `bilingual`; the mode selector may also
+  choose `zh` or `original`.
+- Selecting `zh` or `bilingual` from the mode selector is itself an explicit
+  manual trigger. Selecting `original` turns translation off and aborts active
+  work.
+- Once triggered for a list scope, only the currently loaded page or pages are
+  eligible. When infinite scrolling loads another page, its newly loaded items
+  are translated. The application must not translate the entire article
+  history in advance.
 - Adding another page to the same list must not cancel translation work already
   in flight for earlier items. New items join the pending work; only a mode
-  change, list-scope change, retry or unmount aborts active work.
-- Newly observed items caused by a refresh follow the same rule.
+  change to original, list-scope change, retry or unmount aborts active work.
+- Newly observed items caused by a refresh follow the same manual-trigger scope.
+- Switching to another feed, group or filter starts in original state and
+  requires a new manual trigger. A previously triggered scope may reuse cached
+  translations when revisited, but must not call the upstream merely because
+  it was opened again.
 - Translation must not block list rendering, scrolling, opening an article,
   changing filters or navigating the list. The original content remains visible
   until a translation arrives.
@@ -139,12 +152,18 @@ this document.
 
 - The list header contains a translation control in the position indicated by
   the user’s screenshot: to the left of the split “mark all as read” control.
-  It exposes original, Chinese and bilingual modes.
-- When the effective mode would be translated but no API key is configured, the
-  control indicates that configuration is required rather than silently
-  pretending translation is active.
-- The control shows a translating state while work is in progress and a retry
-  action after a recoverable failure.
+  It is a split control: a main Translate action and a mode menu exposing
+  original, Chinese and bilingual modes.
+- The main Translate action starts the current list’s first request. When a
+  recoverable failure is showing, pressing it retries the current list.
+- Selecting a translated mode from the mode menu is also an explicit manual
+  trigger; selecting original turns translation off.
+- No list-open, reload, pagination, or mode-restoration path may invoke the
+  main action automatically.
+- When translation is off or no API key is configured, the control indicates
+  that configuration/state rather than silently pretending translation is
+  active.
+- The control shows a translating state while work is in progress.
 - A failed request must leave the original content readable. Partial results
   are retained; items that did not translate keep the original.
 - Batch success is defined by the `done` event, not by the transport promise
@@ -284,18 +303,23 @@ data: {"error":"..."}
 
 ## Acceptance criteria
 
-- With an API key configured and the effective mode `bilingual`, opening any
-  article list shows the original title first and a de-emphasized Chinese title
-  below it, and the original excerpt first with a de-emphasized Chinese excerpt
-  below it; the visual relationship matches the existing article detail
-  bilingual presentation.
-- Switching to `zh` shows only the Chinese title/excerpt (falling back to the
-  original when unavailable). Switching to `original` shows the current list
-  unchanged and makes no translation requests.
+- With an API key configured and a stored `bilingual` mode, opening or reloading
+  an article list makes no translation request and shows original content
+  until the user presses Translate.
+- After pressing Translate, the original title remains first with a de-emphasized
+  Chinese title below it, and the original excerpt remains first with a
+  de-emphasized smaller Chinese excerpt below it; the visual relationship
+  matches the existing article detail bilingual presentation.
+- Selecting `zh` from the mode menu triggers translation and then shows only
+  the Chinese title/excerpt (falling back to the original when unavailable).
+  Selecting `original` shows the current list unchanged and makes no translation
+  requests.
 - The mode survives a page reload and is synchronized through the existing
-  settings API.
-- English-only items are translated automatically; Chinese-only items produce
-  no translation request; mixed fields are left unchanged by the stated
+  settings API, but restoring it does not itself trigger translation.
+- Switching to another feed/group/filter requires a new manual trigger and does
+  not inherit the previous scope's active translation state.
+- After a manual trigger, English-only items are translated; Chinese-only items
+  produce no translation request; mixed fields are left unchanged by the stated
   eligibility rule.
 - The excerpt sent for translation uses the existing normalized plain-text
   extraction and ends at a sentence boundary when available, otherwise at a
@@ -307,8 +331,9 @@ data: {"error":"..."}
   status.
 - In bilingual mode, the translated title and excerpt are both smaller than
   their original counterparts and use lower contrast.
-- Reopening a list with unchanged content uses cached translations without an
-  upstream call; editing an item’s title or excerpt causes a new translation.
+- Reopening a list with unchanged content requires a manual trigger but then
+  uses cached translations without an upstream call; editing an item’s title or
+  excerpt causes a new translation.
 - A failed request leaves every affected row readable in its original form and
   offers a retry; partial results remain translated.
 - A stream that ends without `done` is not reported as a successful batch;

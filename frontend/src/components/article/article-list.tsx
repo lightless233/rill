@@ -118,6 +118,7 @@ export function ArticleList() {
   const createBookmark = useCreateBookmark();
   const deleteBookmark = useDeleteBookmark();
   const [markAllConfirmOpen, setMarkAllConfirmOpen] = useState(false);
+  const [requestedListKey, setRequestedListKey] = useState<string | null>(null);
 
   const { pinRead, unpinRead } = useReadStatePins({
     feedId: selectedFeedId,
@@ -137,6 +138,10 @@ export function ArticleList() {
     listTranslationMode,
     hasTranslationKey,
   );
+  const translationRequested = requestedListKey === pinsKey;
+  const displayTranslationMode = translationRequested
+    ? effectiveTranslationMode
+    : "original";
   const {
     translationsByItemId,
     status: listTranslationStatus,
@@ -146,8 +151,25 @@ export function ArticleList() {
     articles,
     mode: effectiveTranslationMode,
     hasKey: hasTranslationKey,
+    requested: translationRequested,
     scopeKey: pinsKey,
   });
+
+  const handleStartTranslation = useCallback(() => {
+    if (!hasTranslationKey) return;
+    setRequestedListKey(pinsKey);
+    if (
+      listTranslationStatus === "error" ||
+      listTranslationStatus === "incomplete"
+    ) {
+      retryListTranslation();
+    }
+  }, [
+    hasTranslationKey,
+    pinsKey,
+    listTranslationStatus,
+    retryListTranslation,
+  ]);
 
   // Leaving this exact list (filter/feed/group change or unmount) commits the
   // read markings: pinned rows stop being shown in the unread view. Only the
@@ -514,9 +536,10 @@ export function ArticleList() {
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <ListTranslationControl
+            requested={translationRequested}
             status={listTranslationStatus}
             error={listTranslationError}
-            onRetry={retryListTranslation}
+            onStart={handleStartTranslation}
           />
           <Button
             variant="outline"
@@ -646,8 +669,12 @@ export function ArticleList() {
                       feedFaviconUrl={
                         feed ? getFaviconUrl(feed.link, feed.site_url) : null
                       }
-                      translation={translationsByItemId.get(article.id)}
-                      translationMode={effectiveTranslationMode}
+                      translation={
+                        translationRequested
+                          ? translationsByItemId.get(article.id)
+                          : undefined
+                      }
+                      translationMode={displayTranslationMode}
                     />
                   );
                 })}
