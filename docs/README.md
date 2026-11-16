@@ -41,3 +41,7 @@
   translation modes, batch SSE contract and settings-schema decision
 - [002 Plan](plans/002-2026-11-16-list-translation.md): implementation units and
   acceptance for list translation
+- [003 Spec](specs/003-2026-11-16-article-sharing.md): time-limited public
+  article snapshots, optional passcodes and expiry semantics
+- [003 Plan](plans/003-2026-11-16-article-sharing.md): implementation units and
+  acceptance for public sharing
