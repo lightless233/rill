@@ -112,10 +112,13 @@ export function ShareDialog({ article, onOpenChange }: ShareDialogProps) {
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent
+        data-hotkey-ignore="true"
+        className="flex max-h-[85vh] w-full max-w-[440px] flex-col gap-0 overflow-hidden p-0"
+      >
         {result ? (
           <>
-            <DialogHeader>
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
               <DialogTitle>{t("share.created.title")}</DialogTitle>
               <DialogDescription>
                 {t("share.created.expires", {
@@ -124,7 +127,7 @@ export function ShareDialog({ article, onOpenChange }: ShareDialogProps) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               <div className="space-y-1.5">
                 <label
                   htmlFor="share-public-link"
@@ -196,7 +199,7 @@ export function ShareDialog({ article, onOpenChange }: ShareDialogProps) {
               )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t px-5 py-4">
               <Button
                 type="button"
                 onClick={() => onOpenChange(false)}
@@ -208,14 +211,14 @@ export function ShareDialog({ article, onOpenChange }: ShareDialogProps) {
           </>
         ) : (
           <>
-            <DialogHeader>
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
               <DialogTitle>{t("share.dialog.title")}</DialogTitle>
               <DialogDescription>
                 {t("share.dialog.description")}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               <div className="space-y-1.5">
                 <label
                   htmlFor="share-expiry"
@@ -353,7 +356,7 @@ export function ShareDialog({ article, onOpenChange }: ShareDialogProps) {
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t px-5 py-4">
               <Button
                 type="button"
                 variant="outline"
