@@ -36,11 +36,20 @@ Change:
 - Keep `list_translation_mode` independent from the existing
   `translation_mode`, which controls article detail display.
 - Mirror the field in the frontend API types, preferences store and
-  settings-sync path. Apply the effective-mode rule from the Spec: stored mode
-  wins; no stored mode means bilingual when a key is configured, otherwise
-  original; no key always suppresses requests.
+  settings-sync path. Keep the local value nullable/unset; do not normalize an
+  unset value to a concrete mode in the persisted preference. Derive the
+  effective mode at read time from the stored mode and key availability: stored
+  mode wins; unset means bilingual when a key is configured and original
+  otherwise; no key always suppresses requests.
 - Add the list translation setting to the AI settings tab, reusing the existing
   mode vocabulary and controls. Add the list-header control in T4.
+- Extract the existing settings-dialog save helper (`useApplySetting`) and its
+  per-field generation tracking into a shared location. The settings dialog and
+  the list-header control must both use that shared path for immediate local
+  apply, seed waiting, failed-save rollback and superseded-request handling.
+  Do not implement a second PATCH/rollback path for the header control.
+- Do not seed an unset list mode into the server as if it were an explicit
+  choice. Existing seed behavior for locale/page size/theme remains unchanged.
 - Keep the settings table typed. Do not add a key-value table, a JSON blob or a
   note column as part of this feature.
 
@@ -56,7 +65,9 @@ dialog.
 Completion evidence: GET/PATCH round-trips every allowed mode; an absent field
 leaves the stored value unchanged; invalid values return `400`; a fresh
 database and an upgraded database both accept the new setting; existing
-settings tests and sync behavior remain intact.
+settings tests and sync behavior remain intact; both the settings dialog and
+the list header persist through the same shared save path without duplicating
+PATCH, rollback or generation handling.
 
 ### T2 — Add the batch list translation endpoint
 
@@ -73,22 +84,34 @@ Change:
   lookup key and may be negative for orphaned starred bookmarks. Reject empty
   items, oversized fields and oversized batches with the standard `400` error
   envelope.
-- Load the existing translation configuration; a missing key is a `400` before
-  the stream starts. Do not introduce a second credential configuration.
+- Load the existing translation configuration through the existing
+  `loadConfiguredAIConfig` path; a missing key is a `400` before the stream
+  starts. Do not introduce a second credential configuration.
 - Reuse the established translation cache semantics and the existing
-  `article_translations` table; no new translation-cache table is needed.
-  Unchanged title/excerpt content is served from cache without an upstream
-  call; changed content is retranslated; `force` bypasses cache entries. Use a
-  list-specific content-hash namespace so list entries cannot collide with
-  article-body translations.
-- Translate misses in upstream batches, not once per item, and reuse the
-  existing streaming parser and segment-marker machinery. Emit each item as
-  soon as its requested fields are complete; emit partial results before a
-  later `error` event when upstream work fails after some items succeeded.
+  `article_translations` table through the existing translation store methods;
+  no new translation-cache table is needed. Unchanged title/excerpt content is
+  served from cache without an upstream call; changed content is retranslated;
+  `force` bypasses cache entries. Use a list-specific content-hash namespace so
+  list entries cannot collide with article-body translations.
+- Reuse `translator.TranslateArticle` with an empty title and a flattened list
+  of existing `translator.Segment` values for all requested fields. Use
+  list-scoped unique segment ids. It already owns upstream requests, batching,
+  cancellation/timeout, segment completeness and stream parsing; do not write a
+  parallel LLM client, batcher or segment parser. The list layer only maps
+  fields to segments, maps returned segment ids back to items, and decides when
+  each item is complete.
+- Reuse the existing `startSSEStream` writer for server events and write-deadline
+  handling. Emit each item as soon as its requested fields are complete; emit
+  partial results before a later `error` event when upstream work fails after
+  some items succeeded. Do not call `TranslateArticle` once per item.
 - Cache completed items durably so reopening a list does not call the upstream
   again. Do not store translated text in `items`.
 - Return the model name in the stream metadata and mark cached versus freshly
   translated items.
+- Emit `done` only after every requested item has an `item` event. `done` is
+  the batch-success marker; transport EOF is not. When upstream work fails
+  after partial success, emit `error` after the completed items and do not emit
+  `done`.
 
 Primary scope: [translation handler](../../backend/internal/handler/translation.go),
 [route registration](../../backend/internal/handler/handler.go),
@@ -100,8 +123,9 @@ Completion evidence: a mock upstream receives one batch for multiple items and
 the stream returns each item’s title/excerpt; a second identical request makes
 no upstream call; `force` bypasses cache; missing key and invalid payloads fail
 before streaming; an upstream failure after partial success emits completed
-items plus an error; negative correlation ids work; no per-row upstream request
-is made.
+items plus an error; a successful batch emits `done` only after all requested
+items are accounted for; negative correlation ids work; no per-row upstream
+request is made.
 
 ### T3 — Add the frontend list translation pipeline
 
@@ -111,22 +135,34 @@ mechanism for translations, and automatic work must not block reading.
 Change:
 
 - Extend the API client with the streaming list-translation call and typed
-  request/callback shapes.
+  request/callback shapes. Reuse the existing `streamSSEEvents` transport and
+  error parsing; do not add a second SSE reader.
 - Add a list-translation hook used by the article list. It must:
   - run only when the effective mode is translated and a key is configured;
   - evaluate title and excerpt independently with the Spec’s Latin/no-CJK
     eligibility rule;
   - send bounded batches (frontend batches smaller than the server maximum);
   - update rows as `item` events arrive;
+  - track whether `done` was observed; after the transport promise resolves,
+    treat a missing `done` as an incomplete batch, retain completed items, and
+    make missing items retryable;
+  - compare requested item ids with received item events so a `done` stream
+    that omitted an item cannot be mistaken for full success;
+  - treat an explicit abort as cancellation, not failure; do not show an error
+    or mark unfinished items failed;
   - retain partial results and expose a list-level retry state;
   - abort in-flight work when the mode becomes original, the list scope changes
     or the view unmounts;
   - reuse an in-session cache for already translated content while treating the
     backend cache as the cross-reload source of truth;
   - avoid duplicate streams for the same content and avoid per-row queries.
-- Build the translation source from a longer plain-text excerpt (around
-  300–400 characters) without the display ellipsis. Keep the existing display
-  excerpt and line-clamp behavior.
+- Build the translation source from a longer plain-text excerpt by reusing the
+  existing `extractSummary` HTML-stripping and whitespace-normalization logic.
+  Separate the display truncation (existing 150-character excerpt with
+  ellipsis) from the translation-source truncation (up to about 400
+  characters). The source must be cut at a sentence boundary when available,
+  otherwise at a word boundary; do not add a third HTML extractor and do not
+  use a raw character slice that can end mid-word.
 - Keep translation work out of the items query cache so read-state optimistic
   updates, list membership, pagination and bookmark reconciliation are not
   disturbed.
@@ -139,8 +175,10 @@ tests.
 Completion evidence: opening a list starts translation; scrolling a new page
 translates only the new page; switching to original aborts current work and
 makes no further requests; no key or all-Chinese content produces no request;
-a failed stream leaves originals visible and exposes retry; cached content
-reopens without an upstream call.
+a failed stream leaves originals visible and exposes retry; a stream that ends
+without `done`, or omits a requested item, is treated as incomplete with the
+missing items retryable; an explicit abort does not show a failure; cached
+content reopens without an upstream call.
 
 ### T4 — Render the list modes and add the control
 
@@ -163,10 +201,13 @@ Change:
 - Add a header control to the left of the split “mark all as read” control, as
   shown in the user’s screenshot, exposing original/Chinese/bilingual modes.
   The control must work on mobile without crowding the header.
+- Persist the header control’s changes through the shared save path extracted in
+  T1; do not duplicate PATCH, rollback or generation handling in this component.
 - Add `lang` attributes for translated and original text so the existing
   Latin/CJK font settings apply.
 - Add translation status and retry affordances at list level. Do not add
-  per-row spinners or per-row error toasts.
+  per-row spinners or per-row error toasts. A missing `done` or missing item
+  events must surface as an incomplete batch with retry, not as success.
 - Add the new i18n keys to every shipped locale and keep the settings dialog
   and header control using the same vocabulary.
 - Do not change read-state pins, row selection, keyboard navigation, star

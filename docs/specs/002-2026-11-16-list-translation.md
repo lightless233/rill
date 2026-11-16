@@ -63,6 +63,10 @@ this document.
 - The preference is stored in the backend settings and synchronized across
   devices like the existing preferences. `NULL` continues to mean “the user has
   never chosen a value”.
+- The local preference cache must preserve an unset state instead of converting
+  that state into an explicit stored mode. The effective mode is derived from
+  the stored mode and whether a key is configured; a UI control may display the
+  effective mode while the stored value remains unset.
 - Effective behavior:
   - a stored mode is honored when present;
   - when no mode was ever chosen and a translation API key is configured, the
@@ -95,10 +99,13 @@ this document.
   sent to the upstream model. This keeps Chinese and mixed Chinese/English
   content unchanged.
 - Empty fields are skipped. An item with no eligible field is not sent.
-- The translation source for the list excerpt is a longer plain-text excerpt
-  than the 150-character display excerpt (approximately 300–400 characters),
-  without a display ellipsis. This avoids translating a sentence that was cut
-  mid-word. Display still uses the existing line clamping.
+- The translation source for the list excerpt reuses the existing display
+  extraction’s HTML cleaning and whitespace normalization. It is a longer
+  normalized plain-text excerpt than the 150-character display excerpt
+  (up to approximately 400 characters), without a display ellipsis. It must be
+  cut at a sentence boundary when one is available, otherwise at a word
+  boundary; a raw character slice that can end mid-word is not acceptable.
+  Display still uses the existing line clamping.
 - Translation must not use the full article body unless the item’s excerpt is
   explicitly part of the list view.
 
@@ -137,6 +144,12 @@ this document.
   action after a recoverable failure.
 - A failed request must leave the original content readable. Partial results
   are retained; items that did not translate keep the original.
+- Batch success is defined by the `done` event, not by the transport promise
+  resolving. If the stream ends without `done`, the batch is incomplete even
+  when the HTTP response ended cleanly. Completed items remain translated,
+  missing items remain original and become eligible for manual retry.
+- An explicit cancellation is not a failure: it must not surface an error or
+  mark unfinished items as failed.
 - Translation failures are reported once at list level, not once per row, and
   must not enter an automatic retry loop.
 - Switching to `original` stops new work and aborts in-flight list translation
@@ -144,6 +157,10 @@ this document.
   later switch back.
 - Selecting a translated mode without a configured key opens the translation
   settings and does not enable the mode.
+- The settings dialog and the list-header control must persist this preference
+  through one shared save path, including the same immediate local update,
+  rollback on failure and superseded-request handling. They must not implement
+  separate PATCH/rollback logic.
 
 ### Settings schema decision
 
@@ -189,6 +206,7 @@ Request:
 
 - `item_id` is a caller correlation key only. It is not required to exist in the
   items table; negative ids used by orphaned starred bookmarks are valid.
+  Correlation ids must be unique within a request.
 - `title` and `summary` are independently optional, but at least one must be
   non-empty for an item.
 - Maximum 50 items per request. The frontend uses smaller batches.
@@ -221,6 +239,17 @@ data: {"error":"..."}
 - Entries are keyed by the original title and excerpt content, so unchanged
   content reuses the cache and changed content is translated again.
 - The upstream is called with batches of items, not once per row.
+- `done` is the only batch-success marker and is emitted only when every
+  requested item has an `item` event. A stream that ends without `done` is
+  incomplete even if it ended without a transport error; the client retains
+  received items and treats missing items as retryable. An upstream failure
+  after partial results emits `error`, not `done`.
+- The list endpoint reuses the existing translator request/batching/cancel/
+  timeout/completeness path, the existing server SSE writer, the existing
+  configuration loader and the existing translation cache access. The list
+  layer only maps fields to existing segments, maps results back to `item_id`,
+  and decides per-item completion and output. It must not introduce a second
+  LLM client, batcher or SSE parser.
 
 ## Constraints
 
@@ -263,11 +292,20 @@ data: {"error":"..."}
 - English-only items are translated automatically; Chinese-only items produce
   no translation request; mixed fields are left unchanged by the stated
   eligibility rule.
+- The excerpt sent for translation uses the existing normalized plain-text
+  extraction and ends at a sentence boundary when available, otherwise at a
+  word boundary; it is not a raw mid-word character cut.
 - Infinite scrolling translates newly loaded items on demand.
 - Reopening a list with unchanged content uses cached translations without an
   upstream call; editing an item’s title or excerpt causes a new translation.
 - A failed request leaves every affected row readable in its original form and
   offers a retry; partial results remain translated.
+- A stream that ends without `done` is not reported as a successful batch;
+  completed items remain translated and missing items are retryable. An explicit
+  cancellation is not reported as a failure.
+- Changing the preference from either the settings dialog or the list header
+  applies immediately, persists through the same path, and rolls back on the
+  same failure conditions.
 - No API key means no requests, original content, and a configuration prompt
   when a translated mode is selected.
 - Read/unread state, starred state, unread undo pins, keyboard navigation and
