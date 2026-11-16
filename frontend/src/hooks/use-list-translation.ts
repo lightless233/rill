@@ -163,7 +163,12 @@ export function useListTranslation({
               },
               {
                 onItem: (translated) => {
-                  if (controller.signal.aborted) return;
+                  if (
+                    controller.signal.aborted ||
+                    generationRef.current !== generation
+                  ) {
+                    return;
+                  }
                   const input = byItemId.get(translated.item_id);
                   if (!input) return;
 
@@ -188,7 +193,12 @@ export function useListTranslation({
               controller.signal,
             );
           } catch (requestError) {
-            if (controller.signal.aborted) return;
+            if (
+              controller.signal.aborted ||
+              generationRef.current !== generation
+            ) {
+              return;
+            }
 
             for (const input of claimed) {
               if (!translationCache.has(input.key)) {
@@ -205,7 +215,12 @@ export function useListTranslation({
             return;
           }
 
-          if (controller.signal.aborted) return;
+          if (
+            controller.signal.aborted ||
+            generationRef.current !== generation
+          ) {
+            return;
+          }
 
           const missing = batch.filter(
             (item) => !received.has(item.item_id),
@@ -223,20 +238,25 @@ export function useListTranslation({
           }
         }
       } finally {
-        for (const input of claimed) {
-          inFlightKeysRef.current.delete(input.key);
-        }
         controllersRef.current.delete(controller);
 
-        if (!controller.signal.aborted && generationRef.current === generation) {
-          activeWorkersRef.current = Math.max(
-            0,
-            activeWorkersRef.current - 1,
-          );
-          if (activeWorkersRef.current === 0) {
-            setStatus(failedStatusRef.current ?? "idle");
-            if (!failedStatusRef.current) {
-              setError(null);
+        // A stale worker must not remove in-flight keys claimed by the new
+        // scope's worker. The lifecycle reset already cleared its own state.
+        if (generationRef.current === generation) {
+          for (const input of claimed) {
+            inFlightKeysRef.current.delete(input.key);
+          }
+
+          if (!controller.signal.aborted) {
+            activeWorkersRef.current = Math.max(
+              0,
+              activeWorkersRef.current - 1,
+            );
+            if (activeWorkersRef.current === 0) {
+              setStatus(failedStatusRef.current ?? "idle");
+              if (!failedStatusRef.current) {
+                setError(null);
+              }
             }
           }
         }
