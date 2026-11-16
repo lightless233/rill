@@ -86,6 +86,9 @@ this document.
 - Only the currently loaded page or pages are eligible. When infinite scrolling
   loads another page, its newly loaded items are translated. The application
   must not translate the entire article history in advance.
+- Adding another page to the same list must not cancel translation work already
+  in flight for earlier items. New items join the pending work; only a mode
+  change, list-scope change, retry or unmount aborts active work.
 - Newly observed items caused by a refresh follow the same rule.
 - Translation must not block list rendering, scrolling, opening an article,
   changing filters or navigating the list. The original content remains visible
@@ -151,7 +154,9 @@ this document.
 - An explicit cancellation is not a failure: it must not surface an error or
   mark unfinished items as failed.
 - Translation failures are reported once at list level, not once per row, and
-  must not enter an automatic retry loop.
+  must not enter an automatic retry loop. Failure state belongs to the current
+  list scope; switching feed, group, filter, mode or retry clears the previous
+  scope's blocked items and failure indicator.
 - Switching to `original` stops new work and aborts in-flight list translation
   work; already received translations may remain in the session cache for a
   later switch back.
@@ -295,7 +300,13 @@ data: {"error":"..."}
 - The excerpt sent for translation uses the existing normalized plain-text
   extraction and ends at a sentence boundary when available, otherwise at a
   word boundary; it is not a raw mid-word character cut.
-- Infinite scrolling translates newly loaded items on demand.
+- Infinite scrolling translates newly loaded items on demand without cancelling
+  or re-requesting items that are still translating for the same list.
+- A failure in one feed/group/filter does not leave the translation control in
+  a failed state after switching to another list; the new scope reports its own
+  status.
+- In bilingual mode, the translated title and excerpt are both smaller than
+  their original counterparts and use lower contrast.
 - Reopening a list with unchanged content uses cached translations without an
   upstream call; editing an item’s title or excerpt causes a new translation.
 - A failed request leaves every affected row readable in its original form and

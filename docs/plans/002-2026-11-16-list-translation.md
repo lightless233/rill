@@ -151,8 +151,12 @@ Change:
   - treat an explicit abort as cancellation, not failure; do not show an error
     or mark unfinished items failed;
   - retain partial results and expose a list-level retry state;
-  - abort in-flight work when the mode becomes original, the list scope changes
-    or the view unmounts;
+  - claim items that are not already in flight so a newly loaded page appends
+    work without cancelling the current batch or re-requesting its items;
+  - keep failure state scoped to the current list; a failure from the previous
+    feed/group/filter must not mark the new list as failed;
+  - abort in-flight work when the mode becomes original, the list scope changes,
+    the user retries or the view unmounts;
   - reuse an in-session cache for already translated content while treating the
     backend cache as the cross-reload source of truth;
   - avoid duplicate streams for the same content and avoid per-row queries.

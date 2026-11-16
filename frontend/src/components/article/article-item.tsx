@@ -114,7 +114,7 @@ export function ArticleItem({
         </p>
         {translationMode === "bilingual" && translatedSummary && (
           <p
-            className="article-typography line-clamp-2 text-sm text-muted-foreground/80"
+            className="article-typography line-clamp-2 text-[13px] leading-snug text-muted-foreground/80"
             lang="zh-CN"
           >
             {translatedSummary}
