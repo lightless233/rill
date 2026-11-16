@@ -9,15 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Locale and theme are closed sets by contract (shipped catalogs and
-// next-themes' preference names). The page size is a free value within the
+// Locale and theme are closed sets by contract (shipped catalogs).
+// The page size is a free value within the
 // range the items API can serve (maxListLimit); the five-option list is only
 // a frontend UI choice, so a future custom-value picker needs no backend
-// change. These allow-lists mirror the frontend constants in the preferences
-// store and the settings dialog.
+// change. These allow-lists mirror the frontend preference and theme catalogs.
 var (
 	validLocales              = []string{"en", "zh", "de", "fr", "es", "ru", "pt", "sv"}
-	validThemes               = []string{"light", "dark", "system"}
+	validThemes               = []string{"light", "dark", "system", "sage", "parchment", "stone", "night"}
 	validAutoMarkRead         = []string{"off", "open", "5", "10", "30"}
 	validTranslationModes     = []string{"zh", "bilingual"}
 	validListTranslationModes = []string{"original", "zh", "bilingual"}

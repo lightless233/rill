@@ -4,13 +4,14 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { routeTree } from "./routeTree.gen";
-import { Toaster } from "@/components/ui/sonner";
+import { AppToaster } from "@/components/layout/app-toaster";
 import { setUnauthorizedCallback } from "@/lib/api";
 import { applyArticleFontPreferences } from "@/lib/fonts";
 import { preloadLocaleMessages } from "@/lib/i18n";
 import { queryClient } from "@/lib/query-client";
 import { registerPWA } from "@/lib/pwa";
 import { usePreferencesStore } from "@/store";
+import { themeOptions } from "@/lib/themes";
 import "./index.css";
 
 // Create a new router instance
@@ -67,9 +68,15 @@ declare module "@tanstack/react-router" {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        themes={themeOptions.filter((theme) => theme !== "system")}
+        enableSystem
+        enableColorScheme={false}
+      >
         <RouterProvider router={router} />
-        <Toaster position="top-center" />
+        <AppToaster />
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

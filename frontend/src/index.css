@@ -6,9 +6,11 @@
 @import "@fontsource-variable/geist-mono";
 @import "./typeset.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, .night *));
 
-:root {
+:root,
+.light {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -45,7 +47,9 @@
   --font-geist-mono: "Geist Mono Variable", monospace;
 }
 
-.dark {
+.dark,
+.night {
+  color-scheme: dark;
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
@@ -77,6 +81,118 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.6 0.12 250);
+}
+
+.sage {
+  --background: #edf4ea;
+  --foreground: #26352a;
+  --card: #f5f8f2;
+  --primary: #386343;
+  --primary-foreground: #ffffff;
+  --secondary: #e1eadc;
+  --muted-foreground: #53664f;
+  --accent: #d6e4d0;
+  --border: #c3d0bd;
+  --input: #7c9074;
+  --ring: #4a7351;
+  --sidebar: #e3eddf;
+  --sidebar-foreground: #455742;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+.parchment {
+  --background: #f7f3e9;
+  --foreground: #382f28;
+  --card: #fcf8ef;
+  --primary: #a05235;
+  --primary-foreground: #ffffff;
+  --secondary: #ece5d8;
+  --muted-foreground: #6d5d4d;
+  --accent: #e9ddcb;
+  --border: #d7cdbc;
+  --input: #958169;
+  --ring: #a76541;
+  --sidebar: #eee9df;
+  --sidebar-foreground: #625344;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+.stone {
+  --background: #f0efed;
+  --foreground: #303232;
+  --card: #f7f6f4;
+  --primary: #4f6467;
+  --primary-foreground: #ffffff;
+  --secondary: #e3e3df;
+  --muted-foreground: #5b605c;
+  --accent: #daddd8;
+  --border: #cacdc7;
+  --input: #7c8280;
+  --ring: #536c6c;
+  --sidebar: #e5e4e1;
+  --sidebar-foreground: #535b57;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+.night {
+  --background: #1e2833;
+  --foreground: #dde4e9;
+  --card: #25323e;
+  --primary: #a4bfd1;
+  --primary-foreground: #18252f;
+  --secondary: #2c3a47;
+  --muted-foreground: #b0bec9;
+  --accent: #344a5a;
+  --border: #40515e;
+  --input: #698393;
+  --ring: #91afc4;
+  --sidebar: #19232c;
+  --sidebar-foreground: #aab8c3;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @theme inline {

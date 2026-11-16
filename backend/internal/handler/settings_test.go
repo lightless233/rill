@@ -250,6 +250,28 @@ func TestUpdateSettingsOPPOSansRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUpdateSettingsReadingThemesRoundTrip(t *testing.T) {
+	for _, theme := range []string{"sage", "parchment", "stone", "night"} {
+		t.Run(theme, func(t *testing.T) {
+			r, cookie := newSettingsTestRouter(t)
+			body := mustJSONBody(t, map[string]string{"theme": theme})
+			w := performRequest(r, http.MethodPatch, "/api/settings", body, nil, cookie)
+			if w.Code != http.StatusOK {
+				t.Fatalf("PATCH reading theme: expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+
+			w = performRequest(r, http.MethodGet, "/api/settings", nil, nil, cookie)
+			if w.Code != http.StatusOK {
+				t.Fatalf("GET settings: expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			settings := decodeSettings(t, w).Data
+			if settings.Theme == nil || *settings.Theme != theme {
+				t.Fatalf("expected persisted theme %q, got %+v", theme, settings.Theme)
+			}
+		})
+	}
+}
+
 func TestUpdateSettingsEmptyBody(t *testing.T) {
 	r, cookie := newSettingsTestRouter(t)
 

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
 import { settingsAPI, type Settings, type UpdateSettingsRequest } from "@/lib/api";
 import { ensureLocaleMessages } from "@/lib/i18n/messages";
+import { isTheme } from "@/lib/themes";
 import {
   isArticlePageSize,
   isAutoMarkRead,
@@ -13,8 +14,6 @@ import {
   isTranslationMode,
   usePreferencesStore,
 } from "@/store/preferences";
-
-const THEMES = ["light", "dark", "system"] as const;
 
 // The remote settings pull runs once per document, after the session probe.
 // Server values win over the localStorage cache (which stays the first-paint /
@@ -190,7 +189,7 @@ export async function pullRemoteSettings(): Promise<void> {
     const storedTheme = localStorage.getItem("theme");
     if (
       settings.theme !== null &&
-      (THEMES as readonly string[]).includes(settings.theme) &&
+      isTheme(settings.theme) &&
       settings.theme !== storedTheme
     ) {
       dispatchRemoteTheme(settings.theme);
@@ -237,7 +236,7 @@ function seedUnsetSettings(settings: Settings): void {
   if (
     settings.theme === null &&
     storedTheme !== null &&
-    (THEMES as readonly string[]).includes(storedTheme)
+    isTheme(storedTheme)
   ) {
     seed.theme = storedTheme;
   }

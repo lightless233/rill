@@ -68,6 +68,7 @@ import { queryKeys } from "@/queries/keys";
 import { useSettingsQuery } from "@/queries/settings";
 import type { AppLocale } from "@/store/preferences";
 import { cn } from "@/lib/utils";
+import { themeOptions } from "@/lib/themes";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -260,11 +261,10 @@ function GeneralContent() {
               seconds: Number.parseInt(option, 10),
             }),
   }));
-  const themeItems = [
-    { value: "light", label: t("settings.theme.light") },
-    { value: "dark", label: t("settings.theme.dark") },
-    { value: "system", label: t("settings.theme.system") },
-  ];
+  const themeItems = themeOptions.map((value) => ({
+    value,
+    label: t(`settings.theme.${value}`),
+  }));
 
   return (
     <div className="space-y-5">
@@ -354,6 +354,13 @@ function GeneralContent() {
           <SelectContent>
             {themeItems.map((item) => (
               <SelectItem key={item.value} value={item.value}>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "mr-2 inline-block size-3 rounded-full border border-foreground/25 bg-background align-middle",
+                    item.value,
+                  )}
+                />
                 {item.label}
               </SelectItem>
             ))}
