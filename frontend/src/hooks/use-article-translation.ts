@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { toast } from "sonner";
 import type { Item } from "@/lib/api";
 import { APIError, translationAPI } from "@/lib/api";
@@ -14,12 +21,13 @@ import { useSettingsQuery } from "@/queries/settings";
 
 export type TranslationStatus = "idle" | "translating" | "ready" | "error";
 
+const VIEWPORT_NEIGHBOR_BLOCKS = 2;
+const MAX_BLOCKS_PER_REQUEST = 20;
+
 interface CachedTranslationState {
   status: TranslationStatus;
   translatedTitle: string;
   blocks: Record<number, string>;
-  totalSegments: number;
-  receivedSegments: number;
   model: string;
   errorMessage?: string;
 }
@@ -32,9 +40,17 @@ function buildArticleKey(article: Item | null): string | null {
   return `${article.id}:${article.feed_id}:${article.title.length}:${article.content.length}`;
 }
 
+function hasAnyTranslation(state: CachedTranslationState): boolean {
+  return (
+    Boolean(state.translatedTitle.trim()) ||
+    Object.keys(state.blocks).length > 0
+  );
+}
+
 export function useArticleTranslation(
   article: Item | null,
   articleLink: string | null,
+  contentRef: RefObject<HTMLElement | null>,
 ) {
   const { t } = useI18n();
   const preferredMode = usePreferencesStore((s) => s.translationMode);
@@ -52,71 +68,44 @@ export function useArticleTranslation(
   }, [article, articleLink]);
 
   const [, setVersion] = useState(0);
-  const bump = useCallback(() => setVersion((v) => v + 1), []);
+  const bump = useCallback(() => setVersion((value) => value + 1), []);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const activeStreamKeyRef = useRef<string | null>(null);
+  const controllersRef = useRef<Set<AbortController>>(new Set());
+  const inFlightBlocksRef = useRef<Set<number>>(new Set());
+  const titleInFlightRef = useRef(false);
+  const failedBlocksRef = useRef<Set<number>>(new Set());
+  const titleFailedRef = useRef(false);
+  const forceNextRequestRef = useRef(false);
+  const errorNotifiedRef = useRef(false);
 
-  // Abort any ongoing stream when switching to another article or closing drawer.
-  useEffect(() => {
-    return () => {
-      if (abortRef.current) {
-        abortRef.current.abort();
-        abortRef.current = null;
-      }
-      if (activeStreamKeyRef.current) {
-        const key = activeStreamKeyRef.current;
-        const prev = sessionTranslations.get(key);
-        if (prev && prev.status === "translating") {
-          sessionTranslations.delete(key);
-        }
-        activeStreamKeyRef.current = null;
-      }
-    };
-  }, [articleKey]);
-
-  // Check backend DB cache when opening an article not yet present in session cache.
-  useEffect(() => {
-    if (!article || !articleKey || !prepared) return;
-    if (sessionTranslations.has(articleKey)) return;
-    if (!article.title.trim() && prepared.blocks.length === 0) return;
-
-    const controller = new AbortController();
-    translationAPI
-      .lookup(
-        { title: article.title, blocks: prepared.blocks },
-        controller.signal,
-      )
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        const data = res.data;
-        if (!data?.found) return;
-        const blockMap: Record<number, string> = {};
-        for (const seg of data.blocks ?? []) {
-          blockMap[seg.id] = seg.text;
-        }
-        const total =
-          prepared.blocks.length + (article.title.trim() ? 1 : 0);
-        sessionTranslations.set(articleKey, {
-          status: "ready",
-          translatedTitle: data.translated_title ?? "",
-          blocks: blockMap,
-          totalSegments: total,
-          receivedSegments:
-            Object.keys(blockMap).length +
-            (data.translated_title?.trim() ? 1 : 0),
-          model: data.model ?? "",
-        });
-        bump();
-      })
-      .catch(() => {
-        // Cache lookup failure stays silent until the user triggers translation.
-      });
-
-    return () => {
+  const abortAll = useCallback(() => {
+    for (const controller of controllersRef.current) {
       controller.abort();
+    }
+    controllersRef.current.clear();
+    inFlightBlocksRef.current.clear();
+    titleInFlightRef.current = false;
+  }, []);
+
+  // A closed/switched article keeps its translated blocks in the session cache
+  // but returns to original display; reopening must be an explicit action.
+  useEffect(() => {
+    failedBlocksRef.current.clear();
+    titleFailedRef.current = false;
+    forceNextRequestRef.current = false;
+    errorNotifiedRef.current = false;
+
+    return () => {
+      abortAll();
+      if (articleKey) {
+        const state = sessionTranslations.get(articleKey);
+        if (state?.status === "translating") {
+          state.status = hasAnyTranslation(state) ? "ready" : "idle";
+        }
+        sessionViewModes.set(articleKey, "original");
+      }
     };
-  }, [article, articleKey, prepared, bump]);
+  }, [articleKey, abortAll]);
 
   const currentState: CachedTranslationState = (articleKey
     ? sessionTranslations.get(articleKey)
@@ -124,8 +113,6 @@ export function useArticleTranslation(
     status: "idle",
     translatedTitle: "",
     blocks: {},
-    totalSegments: 0,
-    receivedSegments: 0,
     model: "",
   };
 
@@ -136,153 +123,346 @@ export function useArticleTranslation(
     (mode: ArticleViewMode) => {
       if (!articleKey) return;
       sessionViewModes.set(articleKey, mode);
+      if (mode === "original") {
+        abortAll();
+        const state = sessionTranslations.get(articleKey);
+        if (state?.status === "translating") {
+          state.status = hasAnyTranslation(state) ? "ready" : "idle";
+        }
+      }
       bump();
     },
-    [articleKey, bump],
+    [abortAll, articleKey, bump],
   );
 
-  const cancelTranslation = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
+  const requestBlocks = useCallback(
+    (
+      blockIDs: number[],
+      translateTitle: boolean,
+      force: boolean,
+      articleTitle: string,
+    ): boolean => {
+      if (!articleKey || !prepared) return false;
+      const state = sessionTranslations.get(articleKey);
+      if (!state) return false;
+
+      const byID = new Map(prepared.blocks.map((block) => [block.id, block]));
+      const blocks = blockIDs
+        .map((id) => byID.get(id))
+        .filter((block): block is NonNullable<typeof block> => Boolean(block));
+      if (blocks.length === 0 && !translateTitle) return false;
+
+      const controller = new AbortController();
+      controllersRef.current.add(controller);
+      for (const block of blocks) {
+        inFlightBlocksRef.current.add(block.id);
+      }
+      if (translateTitle) {
+        titleInFlightRef.current = true;
+      }
+
+      state.status = "translating";
+      state.errorMessage = undefined;
+      let sawDone = false;
+      bump();
+
+      void (async () => {
+        try {
+          await translationAPI.translateBlocks(
+            {
+              title: translateTitle ? articleTitle : "",
+              blocks,
+              translate_title: translateTitle,
+              force,
+            },
+            {
+              onMeta: (meta) => {
+                if (controller.signal.aborted) return;
+                state.model = meta.model;
+                bump();
+              },
+              onSegment: ({ key, text }) => {
+                if (controller.signal.aborted) return;
+                if (key === "title") {
+                  state.translatedTitle = text;
+                } else {
+                  const id = Number.parseInt(key, 10);
+                  if (!Number.isNaN(id)) {
+                    state.blocks = { ...state.blocks, [id]: text };
+                  }
+                }
+                bump();
+              },
+              onDone: () => {
+                sawDone = true;
+              },
+            },
+            controller.signal,
+          );
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          for (const block of blocks) {
+            failedBlocksRef.current.add(block.id);
+          }
+          if (translateTitle) {
+            titleFailedRef.current = true;
+          }
+          const message =
+            error instanceof APIError || error instanceof Error
+              ? error.message
+              : t("article.translation.failed");
+          if (
+            error instanceof APIError &&
+            error.status === 400 &&
+            message.toLowerCase().includes("api key")
+          ) {
+            toast.error(t("article.translation.missingConfig"));
+            setSettingsOpen(true, "translation");
+            sessionTranslations.delete(articleKey);
+            sessionViewModes.set(articleKey, "original");
+          } else {
+            state.status = "error";
+            state.errorMessage = message;
+            if (!errorNotifiedRef.current) {
+              errorNotifiedRef.current = true;
+              toast.error(message || t("article.translation.failed"));
+            }
+          }
+          bump();
+          return;
+        } finally {
+          for (const block of blocks) {
+            inFlightBlocksRef.current.delete(block.id);
+          }
+          if (translateTitle) {
+            titleInFlightRef.current = false;
+          }
+          controllersRef.current.delete(controller);
+        }
+
+        if (controller.signal.aborted) return;
+        if (!sawDone) {
+          for (const block of blocks) {
+            failedBlocksRef.current.add(block.id);
+          }
+          if (translateTitle) {
+            titleFailedRef.current = true;
+          }
+          state.status = "error";
+          state.errorMessage = t("article.translation.failed");
+          bump();
+          return;
+        }
+
+        if (controllersRef.current.size === 0 && state.status !== "error") {
+          state.status = hasAnyTranslation(state) ? "ready" : "idle";
+          bump();
+        }
+      })();
+      return true;
+    },
+    [articleKey, bump, prepared, setSettingsOpen, t],
+  );
+
+  const scanVisibleBlocks = useCallback(() => {
+    if (!article || !articleKey || !prepared) return;
+    const state = sessionTranslations.get(articleKey);
+    if (!state || state.status === "error" || state.status === "idle") {
+      return;
     }
-    if (articleKey) {
-      const existing = sessionTranslations.get(articleKey);
-      if (existing && existing.status === "translating") {
-        sessionTranslations.delete(articleKey);
-        sessionViewModes.set(articleKey, "original");
-        bump();
+    const mode = sessionViewModes.get(articleKey) ?? "original";
+    if (mode === "original") return;
+
+    const root = contentRef.current;
+    if (!root) return;
+    const viewport = root.closest<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    const viewportRect = (viewport ?? document.documentElement).getBoundingClientRect();
+    const blockIndex = new Map(
+      prepared.blocks.map((block, index) => [block.id, index]),
+    );
+    const visibleIndexes: number[] = [];
+    for (const element of root.querySelectorAll<HTMLElement>("[data-rill-tb]")) {
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom < viewportRect.top || rect.top > viewportRect.bottom) {
+        continue;
+      }
+      const id = Number.parseInt(
+        element.getAttribute("data-rill-tb") ?? "",
+        10,
+      );
+      const index = blockIndex.get(id);
+      if (index !== undefined) {
+        visibleIndexes.push(index);
       }
     }
-    activeStreamKeyRef.current = null;
-  }, [articleKey, bump]);
+
+    let minIndex = Number.POSITIVE_INFINITY;
+    let maxIndex = Number.NEGATIVE_INFINITY;
+    for (const index of visibleIndexes) {
+      minIndex = Math.min(minIndex, index);
+      maxIndex = Math.max(maxIndex, index);
+    }
+    if (!Number.isFinite(minIndex)) {
+      minIndex = 0;
+      maxIndex = -1;
+    }
+
+    const start = Math.max(0, minIndex - VIEWPORT_NEIGHBOR_BLOCKS);
+    const end = Math.min(
+      prepared.blocks.length - 1,
+      maxIndex + VIEWPORT_NEIGHBOR_BLOCKS,
+    );
+    const missing: number[] = [];
+    for (let index = start; index <= end; index++) {
+      const block = prepared.blocks[index];
+      if (
+        block &&
+        !state.blocks[block.id] &&
+        !inFlightBlocksRef.current.has(block.id) &&
+        !failedBlocksRef.current.has(block.id)
+      ) {
+        missing.push(block.id);
+      }
+    }
+
+    const translateTitle =
+      !state.translatedTitle.trim() &&
+      !titleInFlightRef.current &&
+      !titleFailedRef.current;
+    if (missing.length === 0 && !translateTitle) {
+      if (controllersRef.current.size === 0 && state.status === "translating") {
+        state.status = hasAnyTranslation(state) ? "ready" : "idle";
+        bump();
+      }
+      return;
+    }
+
+    const force = forceNextRequestRef.current;
+    if (force) {
+      forceNextRequestRef.current = false;
+    }
+
+    let titleForFirstChunk = translateTitle;
+    const chunks =
+      missing.length === 0
+        ? [[]]
+        : Array.from(
+            { length: Math.ceil(missing.length / MAX_BLOCKS_PER_REQUEST) },
+            (_, index) =>
+              missing.slice(
+                index * MAX_BLOCKS_PER_REQUEST,
+                (index + 1) * MAX_BLOCKS_PER_REQUEST,
+              ),
+          );
+    for (const chunk of chunks) {
+      requestBlocks(
+        chunk,
+        titleForFirstChunk,
+        force,
+        article.title,
+      );
+      titleForFirstChunk = false;
+    }
+  }, [article, articleKey, bump, contentRef, prepared, requestBlocks]);
+
+  useEffect(() => {
+    if (!article || viewMode === "original") return;
+    const root = contentRef.current;
+    if (!root) return;
+    const viewport = root.closest<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    let frame: number | null = null;
+    const scheduleScan = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        scanVisibleBlocks();
+      });
+    };
+    scanVisibleBlocks();
+    viewport?.addEventListener("scroll", scheduleScan, { passive: true });
+    window.addEventListener("resize", scheduleScan);
+    return () => {
+      viewport?.removeEventListener("scroll", scheduleScan);
+      window.removeEventListener("resize", scheduleScan);
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [
+    article,
+    contentRef,
+    currentState.blocks,
+    currentState.translatedTitle,
+    scanVisibleBlocks,
+    viewMode,
+  ]);
+
+  const cancelTranslation = useCallback(() => {
+    abortAll();
+    if (articleKey) {
+      const state = sessionTranslations.get(articleKey);
+      if (state) {
+        state.status = hasAnyTranslation(state) ? "ready" : "idle";
+      }
+      sessionViewModes.set(articleKey, "original");
+    }
+    bump();
+  }, [abortAll, articleKey, bump]);
 
   const startTranslation = useCallback(
-    async (options?: { force?: boolean }) => {
+    (options?: { force?: boolean }) => {
       if (!article || !articleKey || !prepared) return;
-
       const force = options?.force ?? false;
       const existing = sessionTranslations.get(articleKey);
-      if (!force && existing?.status === "ready") {
+
+      if (!force && existing && hasAnyTranslation(existing)) {
         sessionViewModes.set(articleKey, preferredMode);
         bump();
         return;
       }
 
-      if (!settingsData?.translation_api_key_set && existing?.status !== "ready") {
+      if (!settingsData?.translation_api_key_set) {
         toast.info(t("article.translation.missingConfig"));
         setSettingsOpen(true, "translation");
         return;
       }
 
-      if (abortRef.current) {
-        abortRef.current.abort();
+      if (force) {
+        abortAll();
       }
 
-      const controller = new AbortController();
-      abortRef.current = controller;
-      activeStreamKeyRef.current = articleKey;
-
-      const totalSegments =
-        prepared.blocks.length + (article.title.trim() ? 1 : 0);
-
-      const state: CachedTranslationState = {
-        status: "translating",
-        translatedTitle: "",
-        blocks: {},
-        totalSegments,
-        receivedSegments: 0,
-        model: "",
-      };
+      const state: CachedTranslationState = force || !existing
+        ? {
+            status: "translating",
+            translatedTitle: "",
+            blocks: {},
+            model: "",
+          }
+        : existing;
+      state.status = "translating";
+      state.errorMessage = undefined;
       sessionTranslations.set(articleKey, state);
       sessionViewModes.set(articleKey, preferredMode);
+      failedBlocksRef.current.clear();
+      titleFailedRef.current = false;
+      errorNotifiedRef.current = false;
+      forceNextRequestRef.current = force;
       bump();
-
-      try {
-        await translationAPI.stream(
-          {
-            title: article.title,
-            blocks: prepared.blocks,
-            force,
-          },
-          {
-            onMeta: (meta) => {
-              state.totalSegments = meta.total || totalSegments;
-              state.model = meta.model;
-              bump();
-            },
-            onSegment: ({ key, text }) => {
-              if (key === "title") {
-                state.translatedTitle = text;
-              } else {
-                const id = Number.parseInt(key, 10);
-                if (!Number.isNaN(id)) {
-                  state.blocks = { ...state.blocks, [id]: text };
-                }
-              }
-              state.receivedSegments =
-                Object.keys(state.blocks).length +
-                (state.translatedTitle.trim() ? 1 : 0);
-              bump();
-            },
-            onDone: (done) => {
-              state.status = "ready";
-              state.model = done.model || state.model;
-              bump();
-            },
-          },
-          controller.signal,
-        );
-
-        if (!controller.signal.aborted && state.status === "translating") {
-          state.status = "ready";
-          bump();
-        }
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        const message =
-          error instanceof APIError || error instanceof Error
-            ? error.message
-            : t("article.translation.failed");
-        if (
-          error instanceof APIError &&
-          error.status === 400 &&
-          message.toLowerCase().includes("api key")
-        ) {
-          toast.error(t("article.translation.missingConfig"));
-          setSettingsOpen(true, "translation");
-          sessionTranslations.delete(articleKey);
-          sessionViewModes.set(articleKey, "original");
-        } else {
-          state.status = "error";
-          state.errorMessage = message;
-          toast.error(message || t("article.translation.failed"));
-          if (state.receivedSegments === 0) {
-            sessionTranslations.delete(articleKey);
-            sessionViewModes.set(articleKey, "original");
-          }
-        }
-        bump();
-      } finally {
-        if (abortRef.current === controller) {
-          abortRef.current = null;
-        }
-        if (activeStreamKeyRef.current === articleKey) {
-          activeStreamKeyRef.current = null;
-        }
-      }
     },
     [
+      abortAll,
       article,
       articleKey,
-      prepared,
-      preferredMode,
-      settingsData?.translation_api_key_set,
-      setSettingsOpen,
-      t,
       bump,
+      preferredMode,
+      prepared,
+      setSettingsOpen,
+      settingsData?.translation_api_key_set,
+      t,
     ],
   );
 
@@ -295,6 +475,9 @@ export function useArticleTranslation(
     );
   }, [prepared, currentState.blocks, viewMode]);
 
+  const receivedSegments =
+    Object.keys(currentState.blocks).length +
+    (currentState.translatedTitle.trim() ? 1 : 0);
   const hasTranslatableContent =
     Boolean(article?.title.trim()) || (prepared?.blocks.length ?? 0) > 0;
 
@@ -303,12 +486,12 @@ export function useArticleTranslation(
     viewMode,
     setViewMode,
     translatedTitle: currentState.translatedTitle,
-    receivedSegments: currentState.receivedSegments,
-    totalSegments: currentState.totalSegments,
+    receivedSegments,
+    totalSegments: 0,
     renderedHtml,
     hasTranslatableContent,
     hasTranslation:
-      currentState.status === "ready" || currentState.receivedSegments > 0,
+      currentState.status === "ready" || receivedSegments > 0,
     startTranslation,
     cancelTranslation,
   };

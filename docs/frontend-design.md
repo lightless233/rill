@@ -90,6 +90,20 @@ Star/bookmark changes are deliberately the opposite pattern: un-starring removes
 
 Before filing "marked-read items still show up in the unread list" as a bug, check which half is reported: grayed rows while staying in the same unread list are this design working; rows surviving a filter/scope switch was the actual defect, fixed by the pin scoping (#262, #266).
 
+### Article body translation
+
+Article detail translation remains manual. When it starts, it translates the
+title together with the body blocks intersecting the current drawer viewport,
+plus two neighboring blocks on each side. Scrolling triggers the next visible
+range; unseen paragraphs are never queued in advance. Closing the drawer aborts
+active work, and completed blocks are cached independently so reopening only
+requests the missing visible range.
+
+On reopen, the article starts in original mode even if a translated mode was
+used before. Selecting a translated mode is the manual display action; already
+cached blocks render immediately and missing visible blocks are requested then.
+The existing original-first, de-emphasized Chinese body layout is unchanged.
+
 ### List translation
 
 The list has an independent `list_translation_mode` preference (`original`,

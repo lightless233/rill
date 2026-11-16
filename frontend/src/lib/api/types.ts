@@ -115,6 +115,13 @@ export interface TranslateArticleRequest {
   force?: boolean;
 }
 
+export interface TranslateArticleBlocksRequest {
+  title?: string;
+  blocks: TranslationBlockInput[];
+  translate_title?: boolean;
+  force?: boolean;
+}
+
 export interface ListTranslationItemRequest {
   item_id: number;
   title?: string;

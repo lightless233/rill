@@ -110,3 +110,7 @@ Three cases return the status with an empty body instead: unknown routes
   only emitted when every requested item has an `item` event; cached items are
   emitted with `cached: true`. A stream that ends without `done` is incomplete
   even if the HTTP response ended cleanly.
+- `POST /api/translations/blocks` is the viewport-lazy article-body stream. It
+  translates only the requested title/block subset and caches title and body
+  blocks independently; `meta`, `segment`, `done` and `error` follow the
+  existing article translation stream convention.

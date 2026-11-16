@@ -155,6 +155,22 @@ func ComputeContentHash(title string, blocks []Segment) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// ComputeArticleBlockHash keys one lazily translated article block by its
+// normalized text. Blocks are independently reusable across articles.
+func ComputeArticleBlockHash(text string) string {
+	h := sha256.New()
+	writeLenPrefixed(h, "article-block:"+strings.TrimSpace(text))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ComputeArticleTitleHash keys one article title translation independently
+// from body blocks.
+func ComputeArticleTitleHash(title string) string {
+	h := sha256.New()
+	writeLenPrefixed(h, "article-title:"+strings.TrimSpace(title))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // ComputeListContentHash returns a deterministic SHA-256 hex digest for one
 // article-list item's title and excerpt. The namespace prevents these cache
 // entries from colliding with article-body translation hashes.

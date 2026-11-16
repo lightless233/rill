@@ -30,6 +30,7 @@ import type {
   Settings,
   UpdateSettingsRequest,
   TranslateArticleRequest,
+  TranslateArticleBlocksRequest,
   TranslationLookupResponse,
   TranslationTestRequest,
   TranslationTestResponse,
@@ -174,6 +175,12 @@ export interface ListTranslationStreamCallbacks {
   onDone?: (done: ListTranslationDone) => void;
 }
 
+export interface ArticleBlockStreamCallbacks {
+  onMeta?: (meta: { model: string; total: number }) => void;
+  onSegment?: (segment: { key: string; text: string }) => void;
+  onDone?: (done: { model: string }) => void;
+}
+
 async function streamSSEEvents(
   path: string,
   body: unknown,
@@ -266,6 +273,30 @@ export const translationAPI = {
 
   test: (data: TranslationTestRequest) =>
     api.post<APIResponse<TranslationTestResponse>>("/translations/test", data),
+
+  translateBlocks: (
+    data: TranslateArticleBlocksRequest,
+    callbacks: ArticleBlockStreamCallbacks,
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamSSEEvents(
+      "/translations/blocks",
+      data,
+      (eventName, payload) => {
+        if (eventName === "meta") {
+          callbacks.onMeta?.(
+            payload as unknown as { model: string; total: number },
+          );
+        } else if (eventName === "segment") {
+          callbacks.onSegment?.(
+            payload as unknown as { key: string; text: string },
+          );
+        } else if (eventName === "done") {
+          callbacks.onDone?.(payload as unknown as { model: string });
+        }
+      },
+      signal,
+    ),
 
   translateItems: (
     data: TranslateListItemsRequest,

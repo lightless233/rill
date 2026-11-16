@@ -163,6 +163,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 
 			auth.POST("/translations/lookup", h.lookupTranslation)
 			auth.POST("/translations/items", h.translateItems)
+			auth.POST("/translations/blocks", h.translateArticleBlocks)
 			auth.POST("/translations", h.translateArticle)
 			auth.POST("/translations/test", h.testTranslation)
 

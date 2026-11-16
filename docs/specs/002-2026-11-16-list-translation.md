@@ -12,7 +12,8 @@ itself. Translation uses the existing API configuration. The user can switch
 between original, Chinese-only and bilingual presentation. Bilingual
 presentation follows the existing article detail bilingual hierarchy: the
 original text stays primary and the Chinese translation appears below it,
-visually de-emphasized. Article body translation and all existing reading
+visually de-emphasized. List translation is independent from the article
+body's own manual, viewport-lazy translation flow; all existing reading
 interactions remain unchanged.
 
 ## Request source and corrections
@@ -297,8 +298,8 @@ data: {"error":"..."}
 - Translating search results, the sidebar, feed names or bookmarks metadata.
 - Pre-translating articles during feed pulling.
 - Replacing the `settings` table with a key-value or JSON schema.
-- Changing the existing article detail bilingual styles or its manual
-  translate/re-translate flow.
+- Changing the existing article detail bilingual styles. Article body
+  translation has its own manual, viewport-lazy behavior.
 - Adding user-selectable target languages beyond Simplified Chinese.
 
 ## Acceptance criteria

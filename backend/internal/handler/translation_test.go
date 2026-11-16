@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -412,5 +413,112 @@ func TestListTranslationPartialFailureDoesNotEmitDone(t *testing.T) {
 	}
 	if !strings.Contains(streamBody, "event: error") {
 		t.Fatalf("expected an error event, got: %s", streamBody)
+	}
+}
+
+func TestArticleBlockTranslationFlowAndCache(t *testing.T) {
+	var upstreamCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		userPrompt := ""
+		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
+			if message, ok := messages[len(messages)-1].(map[string]any); ok {
+				userPrompt, _ = message["content"].(string)
+			}
+		}
+		ids := []string{}
+		for _, match := range regexp.MustCompile(`\[\[(title|\d+)\]\]`).FindAllStringSubmatch(userPrompt, -1) {
+			ids = append(ids, match[1])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		var chunks []string
+		for _, id := range ids {
+			chunks = append(chunks, "[["+id+"]]\n译文"+id+"\n")
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []map[string]any{{"delta": map[string]string{"content": strings.Join(chunks, "")}}},
+		})
+		_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", payload)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	r, cookie := newSettingsTestRouter(t)
+	body := `{"title":"Article title","blocks":[{"id":0,"text":"First block."},{"id":2,"text":"Second block."}],"translate_title":true}`
+
+	w := performRequest(r, http.MethodPost, "/api/translations/blocks", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 without API key, got %d: %s", w.Code, w.Body.String())
+	}
+
+	patchBody := fmt.Sprintf(`{"translation_api_url":%q,"translation_api_key":"sk-mock-key","translation_model":"deepseek-chat"}`, upstream.URL)
+	w = performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(patchBody), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH settings failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	w = performRequest(r, http.MethodPost, "/api/translations/blocks", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /api/translations/blocks failed: %d: %s", w.Code, w.Body.String())
+	}
+	streamBody := w.Body.String()
+	for _, want := range []string{
+		"event: meta",
+		`"key":"title"`,
+		`"key":"0"`,
+		`"key":"2"`,
+		"event: done",
+	} {
+		if !strings.Contains(streamBody, want) {
+			t.Fatalf("expected stream to contain %q, got: %s", want, streamBody)
+		}
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected one upstream call, got %d", upstreamCalls.Load())
+	}
+
+	// Repeating the same blocks and title is served entirely from the block cache.
+	w = performRequest(r, http.MethodPost, "/api/translations/blocks", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected cached replay, got %d: %s", w.Code, w.Body.String())
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected cache hit to avoid upstream, got %d calls", upstreamCalls.Load())
+	}
+
+	// force bypasses cached block/title entries.
+	forceBody := strings.Replace(body, "{", `{"force":true,`, 1)
+	w = performRequest(r, http.MethodPost, "/api/translations/blocks", strings.NewReader(forceBody), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected force translation, got %d: %s", w.Code, w.Body.String())
+	}
+	if upstreamCalls.Load() != 2 {
+		t.Fatalf("expected force to call upstream again, got %d calls", upstreamCalls.Load())
+	}
+}
+
+func TestArticleBlockTranslationValidation(t *testing.T) {
+	r, cookie := newSettingsTestRouter(t)
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"empty request", `{"blocks":[]}`},
+		{"duplicate block", `{"blocks":[{"id":1,"text":"a"},{"id":1,"text":"b"}]}`},
+		{"negative block", `{"blocks":[{"id":-1,"text":"a"}]}`},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			w := performRequest(r, http.MethodPost, "/api/translations/blocks", strings.NewReader(tt.body), nil, cookie)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
 	}
 }

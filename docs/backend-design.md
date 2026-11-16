@@ -54,6 +54,9 @@ here, it duplicates the migrations and rots.
 - `bookmarks` — content snapshots; `link` unique; `item_id` and `feed_id`
   are nullable soft associations, so snapshots survive source deletions
   (see migrations 001 and 003 for the rationale).
+- `article_block_translations` — independently cached title/body-block
+  translations keyed by content hash and target language; lets lazy article
+  translation persist partial viewport progress across reopenings.
 - `settings` — single row (`id = 1`); nullable preference columns where
   `NULL` means "never explicitly chosen"; validation lives in the handler,
   not SQL `CHECK`s (rationale in migration 004). The typed single-row shape is
@@ -101,6 +104,15 @@ configuration, request/batching path and `article_translations` cache; the list
 layer maps title/excerpt fields to existing translation segments and back. It
 does not store translations in `items`, and `done` is the only full-batch
 success marker. See [Spec 002](specs/002-2026-11-16-list-translation.md).
+
+### Viewport-lazy article translation
+
+Article body translation uses `POST /api/translations/blocks`, which accepts
+only the title/block subset the drawer needs. Title and body blocks are cached
+separately in `article_block_translations`, so completed visible blocks survive
+reopening without translating the unseen body. The existing full-article
+translation endpoint remains for older clients; the current drawer no longer
+uses it.
 
 ## 8. Feed pull strategy
 

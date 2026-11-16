@@ -12,7 +12,7 @@ func TestMigrate(t *testing.T) {
 	defer closeStore(t, store)
 
 	// Verify all expected tables exist
-	tables := []string{"groups", "feeds", "feed_fetch_state", "items", "bookmarks", "settings", "schema_migrations", "items_fts"}
+	tables := []string{"groups", "feeds", "feed_fetch_state", "items", "bookmarks", "settings", "schema_migrations", "items_fts", "article_block_translations"}
 	for _, table := range tables {
 		var count int
 		query := "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:table"
@@ -123,6 +123,16 @@ func TestMigrateListTranslationSettingFromPreviousVersion(t *testing.T) {
 	}
 	if columnCount != 1 {
 		t.Fatalf("expected list_translation_mode column after upgrade, got %d", columnCount)
+	}
+	var blockCacheTableCount int
+	if err := store.db.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name = 'article_block_translations'
+	`).Scan(&blockCacheTableCount); err != nil {
+		t.Fatalf("query article block cache table: %v", err)
+	}
+	if blockCacheTableCount != 1 {
+		t.Fatalf("expected article_block_translations table after upgrade, got %d", blockCacheTableCount)
 	}
 
 	settings, err := store.GetSettings()

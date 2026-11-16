@@ -62,6 +62,56 @@ func TestArticleTranslationCacheRoundTrip(t *testing.T) {
 	}
 }
 
+func TestArticleBlockTranslationCacheRoundTrip(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	got, err := store.GetArticleBlockTranslation("missing-block", "zh-CN")
+	if err != nil {
+		t.Fatalf("GetArticleBlockTranslation(missing) failed: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil on cache miss, got %+v", got)
+	}
+
+	err = store.SaveArticleBlockTranslation(ArticleBlockTranslationParams{
+		ContentHash:    "block-hash-1",
+		TargetLang:     "zh-CN",
+		SourceText:     "First paragraph.",
+		TranslatedText: "第一段。",
+		Model:          "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatalf("SaveArticleBlockTranslation failed: %v", err)
+	}
+
+	got, err = store.GetArticleBlockTranslation("block-hash-1", "zh-CN")
+	if err != nil || got == nil {
+		t.Fatalf("GetArticleBlockTranslation failed: err=%v got=%v", err, got)
+	}
+	if got.SourceText != "First paragraph." || got.TranslatedText != "第一段。" || got.Model != "deepseek-chat" {
+		t.Fatalf("unexpected cached block: %+v", got)
+	}
+
+	err = store.SaveArticleBlockTranslation(ArticleBlockTranslationParams{
+		ContentHash:    "block-hash-1",
+		TargetLang:     "zh-CN",
+		SourceText:     "First paragraph.",
+		TranslatedText: "更新后的第一段。",
+		Model:          "deepseek-reasoner",
+	})
+	if err != nil {
+		t.Fatalf("SaveArticleBlockTranslation overwrite failed: %v", err)
+	}
+	got, err = store.GetArticleBlockTranslation("block-hash-1", "zh-CN")
+	if err != nil || got == nil {
+		t.Fatalf("GetArticleBlockTranslation after overwrite failed: err=%v got=%v", err, got)
+	}
+	if got.TranslatedText != "更新后的第一段。" || got.Model != "deepseek-reasoner" {
+		t.Fatalf("unexpected overwritten block: %+v", got)
+	}
+}
+
 func TestArticleSummaryCacheRoundTrip(t *testing.T) {
 	store, _ := setupTestDB(t)
 	defer closeStore(t, store)

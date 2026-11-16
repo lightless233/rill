@@ -106,6 +106,17 @@ type ArticleTranslation struct {
 	UpdatedAt       int64               `json:"updated_at"`
 }
 
+// ArticleBlockTranslation caches one independently translated article block
+// (or title) so lazy viewport translation can persist partial progress.
+type ArticleBlockTranslation struct {
+	ContentHash    string `json:"content_hash"`
+	TargetLang     string `json:"target_lang"`
+	SourceText     string `json:"source_text"`
+	TranslatedText string `json:"translated_text"`
+	Model          string `json:"model"`
+	UpdatedAt      int64  `json:"updated_at"`
+}
+
 // ArticleSummary stores a cached AI summary of an article snapshot.
 type ArticleSummary struct {
 	ContentHash string `json:"content_hash"`

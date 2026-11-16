@@ -222,8 +222,9 @@ export function renderTranslatedArticleHtml(
 
   const targets = Array.from(root.querySelectorAll("[data-rill-tb]"));
   for (const el of targets) {
+    // Keep the block id in the DOM so viewport-driven translation can observe
+    // which blocks need more work as the reader scrolls.
     const rawId = el.getAttribute("data-rill-tb");
-    el.removeAttribute("data-rill-tb");
     if (rawId === null) continue;
 
     const id = Number.parseInt(rawId, 10);

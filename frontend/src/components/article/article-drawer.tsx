@@ -150,6 +150,7 @@ export function ArticleDrawer() {
     ? toSafeExternalUrl(displayedArticle.link)
     : null;
 
+  const articleBodyRef = useRef<HTMLDivElement | null>(null);
   const {
     status: translationStatus,
     viewMode,
@@ -162,7 +163,11 @@ export function ArticleDrawer() {
     hasTranslation,
     startTranslation,
     cancelTranslation,
-  } = useArticleTranslation(displayedArticle, safeArticleLink);
+  } = useArticleTranslation(
+    displayedArticle,
+    safeArticleLink,
+    articleBodyRef,
+  );
 
   const {
     status: summaryStatus,
@@ -718,6 +723,7 @@ export function ArticleDrawer() {
                   )}
 
                 <div
+                  ref={articleBodyRef}
                   className="typeset typeset-article mt-6 min-w-0 max-w-none"
                   dangerouslySetInnerHTML={{
                     __html: renderedHtml,
