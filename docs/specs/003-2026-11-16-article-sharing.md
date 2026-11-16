@@ -30,9 +30,11 @@ show article content.
   server accepts durations from 1 hour through 1 year and computes the absolute
   expiry itself.
 - A passcode is optional. It is exactly four characters from `A-Z` and `0-9`,
-  case-insensitive, normalized to uppercase. The user may type one or ask the
-  server to generate one. A generated code omits ambiguous characters; manually
-  entered codes accept the full alphanumeric set.
+  case-insensitive, normalized to uppercase. The creator chooses either
+  `auto-generate` or a custom code. In auto-generate mode no passcode is sent at
+  creation; the server generates it and returns it once in the creation
+  response. A generated code omits ambiguous characters; manually entered codes
+  accept the full alphanumeric set.
 - Passcodes are never placed in the URL or a query parameter. They are entered
   by the recipient after opening the public page.
 - The public page is a standalone read-only view: no app sidebar, no login
@@ -49,13 +51,16 @@ show article content.
 - The share dialog lets the creator choose:
   - expiry preset or custom hours;
   - whether a passcode is required;
-  - a custom four-character passcode, or a generated one.
+  - either `auto-generate` or a custom four-character passcode. Auto-generate
+    does not call a separate generation endpoint; the code arrives with the
+    creation response.
 - Creating a share returns:
   - the public path (`/s/<token>`);
   - the absolute expiry timestamp;
   - the passcode when one is enabled, for the creator to copy.
 - The dialog provides copy controls for the link and, when enabled, the
-  passcode. Copy failure must not pretend the value was copied.
+  passcode. It copies the complete URL (`window.location.origin + path`), not
+  only the path. Copy failure must not pretend the value was copied.
 - Creating a share requires a valid Rill session. The source item must exist at
   creation time.
 
@@ -72,10 +77,18 @@ show article content.
 - Repeated wrong passcodes are rate limited per share token and client IP:
   after five failures within fifteen minutes, return `429` with `Retry-After`;
   successful verification clears the failure state.
-- Expired links return `410`; missing or malformed tokens return `404`. The
-  public page presents distinct expired/invalid states without article content.
+- Expired links return `410` while their lightweight tombstone exists; missing
+  or malformed tokens return `404`. Expired tombstones retain only the token and
+  expiry metadata, not article content or a passcode hash. If a later
+  maintenance purge removes a tombstone, `404` is an acceptable outcome for that
+  token. The public page treats both as unavailable without article content.
 - Server-side expiry is authoritative. Client-side clocks or cached state must
   not extend a share's validity.
+- A public page already open when `expires_at` passes must clear the rendered
+  article and show the expired state. On tab visibility or bfcache restore it
+  rechecks the expiry before leaving content visible. `Cache-Control:
+  no-store` covers reloads; it does not by itself clear an already loaded React
+  tree.
 - Public share responses must not be cached as indefinitely valid content; the
   API sends `Cache-Control: no-store`.
 
@@ -91,8 +104,12 @@ show article content.
 ### Cleanup
 
 - Expired shares are rejected on every access.
-- Expired rows may be deleted opportunistically when creating or accessing
-  shares. A new background scheduler is not required.
+- Expired rows are scrubbed opportunistically when creating or accessing
+  shares: clear `title`, `content`, `link`, `feed_name` and `passcode_hash`, but
+  keep the token and `expires_at` as a tombstone so `410` remains
+  distinguishable from an unknown token.
+- A later maintenance purge may delete tombstones; after that, `404` is
+  acceptable. A new background scheduler is not required.
 
 ## API contract
 
@@ -138,7 +155,7 @@ Response:
   pub_date, expires_at}}`.
 - Valid, passcode required: `200` with `{data: {requires_passcode: true,
   expires_at}}` and no article fields.
-- Expired: `410`.
+- Expired: `410` while the tombstone exists; `404` after a maintenance purge.
 - Unknown/invalid token: `404`.
 
 ### `POST /api/shares/:token/access` (public)
@@ -151,7 +168,7 @@ Request:
 
 - Correct: `200` with the same content payload as a valid unprotected share.
 - Incorrect: `403` with `{error: "invalid passcode"}`.
-- Expired: `410`.
+- Expired: `410` while the tombstone exists; `404` after a maintenance purge.
 - Unknown/invalid token: `404`.
 - Rate limited: `429` with `Retry-After`.
 
@@ -167,7 +184,9 @@ table containing at least:
 - `expires_at`, `created_at`, and optional `last_accessed_at`.
 
 Use bcrypt for passcode hashes. Do not store plaintext passcodes. Do not add
-share fields to `settings` or `items`.
+share fields to `settings` or `items`. Expired tombstones must have their
+article fields and passcode hash cleared; the token and expiry remain for the
+`410` distinction.
 
 ## Constraints
 
@@ -196,11 +215,15 @@ share fields to `settings` or `items`.
 ## Acceptance criteria
 
 - An authenticated user can open an article, create a share, and copy its
-  `/s/<token>` link.
+  complete `/s/<token>` URL.
 - Opening that link in a fresh browser without a Rill session shows the article
   snapshot and does not redirect to login.
 - The chosen expiry is shown and enforced server-side; after expiry the link
-  returns an expired page and no content.
+  returns an expired page and no content. A page left open past expiry clears
+  its content, and a bfcache/visibility restore does not leave expired content
+  visible.
+- Auto-generated protection returns a server-generated code with the creation
+  response without a separate passcode-generation request.
 - With a passcode enabled, the public page reveals no title/body before the
   correct code; wrong codes show an error and do not redirect to login; five
   failures within the window produce `429`; the correct code shows the article.
