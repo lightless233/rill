@@ -15,6 +15,7 @@ export type LatinFont = (typeof latinFontOptions)[number];
 export const cjkFontOptions = [
   "system",
   "noto-sans-sc",
+  "oppo-sans",
   "system-sans",
   "noto-serif-sc",
   "lxgw-wenkai",
@@ -99,6 +100,12 @@ export const CJK_FONT_OPTIONS: readonly FontOptionMeta<CJKFont>[] = [
     category: "sans",
     family: `"Noto Sans SC Variable", ${SYSTEM_CJK_FALLBACK}, sans-serif`,
     labelKey: "settings.fonts.option.notoSansSC",
+  },
+  {
+    value: "oppo-sans",
+    category: "sans",
+    family: `"OPPO Sans 4.0", ${SYSTEM_CJK_FALLBACK}, sans-serif`,
+    label: "OPPO Sans 4.0",
   },
   {
     value: "system-sans",
@@ -224,6 +231,7 @@ const FONT_CSS_LOADERS: Record<string, () => Promise<unknown>> = {
     ]),
   "mono:fira-code": () => import("@fontsource-variable/fira-code"),
   "cjk:noto-sans-sc": () => import("@fontsource-variable/noto-sans-sc"),
+  "cjk:oppo-sans": () => import("./oppo-sans.css"),
   "cjk:noto-serif-sc": () => import("@fontsource-variable/noto-serif-sc"),
   "cjk:lxgw-wenkai": () =>
     import("lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css"),

@@ -55,6 +55,7 @@ export const zhMessages: PartialMessages = {
   "settings.about.install": "安装应用",
   "settings.about.installing": "安装中...",
   "settings.about.license": "MIT 许可证 © 2024 Rook1e",
+  "settings.about.fonts": "使用字体：",
   "settings.about.reportIssue": "报告问题",
   "settings.articlePageSize.description": "每次加载的文章数量",
   "settings.articlePageSize.label": "每次加载文章数",

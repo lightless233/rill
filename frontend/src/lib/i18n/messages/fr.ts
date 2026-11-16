@@ -55,6 +55,7 @@ export const frMessages: PartialMessages = {
   "settings.about.install": "Installer l'application",
   "settings.about.installing": "Installation...",
   "settings.about.license": "Licence MIT © 2024 Rook1e",
+  "settings.about.fonts": "Polices utilisées :",
   "settings.about.reportIssue": "Signaler un problème",
   "settings.articlePageSize.description": "Nombre d'articles chargés à chaque fois",
   "settings.articlePageSize.label": "Articles par chargement",

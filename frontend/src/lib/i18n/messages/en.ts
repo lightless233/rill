@@ -53,6 +53,7 @@ export const enMessages = {
   "settings.about.install": "Install App",
   "settings.about.installing": "Installing...",
   "settings.about.license": "MIT License © 2024 Rook1e",
+  "settings.about.fonts": "Fonts used:",
   "settings.about.reportIssue": "Report Issue",
   "settings.articlePageSize.description": "Number of articles fetched each time",
   "settings.articlePageSize.label": "Articles per load",

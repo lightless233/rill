@@ -34,6 +34,7 @@ var (
 	validCJKFonts = []string{
 		"system",
 		"noto-sans-sc",
+		"oppo-sans",
 		"system-sans",
 		"noto-serif-sc",
 		"lxgw-wenkai",

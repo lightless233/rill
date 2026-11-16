@@ -954,9 +954,21 @@ function AboutContent() {
           {t("settings.about.reportIssue")}
         </a>
       </div>
-      <p className="mt-auto text-xs text-muted-foreground">
-        {t("settings.about.license")}
-      </p>
+      <div className="mt-auto space-y-2 text-center text-xs text-muted-foreground">
+        <p>{t("settings.about.license")}</p>
+        <p>
+          {t("settings.about.fonts")}{" "}
+          <a
+            href="/fonts/oppo-sans/LICENSE.txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4"
+          >
+            OPPO Sans 4.0
+          </a>
+          {" · © 2024 Guangdong OPPO Mobile Telecommunications Corp., Ltd."}
+        </p>
+      </div>
     </div>
   );
 }

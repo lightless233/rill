@@ -55,6 +55,7 @@ export const svMessages: PartialMessages = {
   "settings.about.install": "Installera app",
   "settings.about.installing": "Installerar...",
   "settings.about.license": "MIT-licens © 2024 Rook1e",
+  "settings.about.fonts": "Typsnitt som används:",
   "settings.about.reportIssue": "Rapportera problem",
   "settings.articlePageSize.description": "Antal artiklar som hamtas varje gang",
   "settings.articlePageSize.label": "Artiklar per laddning",

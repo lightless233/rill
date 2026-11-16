@@ -1,0 +1,10 @@
+@font-face {
+  font-family: "OPPO Sans 4.0";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src:
+    local("OPPO Sans 4.0"),
+    local("OPPOSans40"),
+    url("/fonts/oppo-sans/OPPOSans4.0.ttf") format("truetype");
+}
