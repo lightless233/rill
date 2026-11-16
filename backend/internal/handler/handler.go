@@ -162,6 +162,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.PATCH("/settings", h.updateSettings)
 
 			auth.POST("/translations/lookup", h.lookupTranslation)
+			auth.POST("/translations/items", h.translateItems)
 			auth.POST("/translations", h.translateArticle)
 			auth.POST("/translations/test", h.testTranslation)
 

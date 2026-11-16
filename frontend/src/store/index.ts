@@ -2,6 +2,7 @@ export { useUIStore, type SettingsTab } from "./ui";
 export {
   articlePageSizeOptions,
   autoMarkReadOptions,
+  listTranslationModeOptions,
   supportedLocales,
   translationModeOptions,
   usePreferencesStore,

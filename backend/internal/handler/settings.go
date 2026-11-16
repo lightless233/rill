@@ -16,11 +16,12 @@ import (
 // change. These allow-lists mirror the frontend constants in the preferences
 // store and the settings dialog.
 var (
-	validLocales          = []string{"en", "zh", "de", "fr", "es", "ru", "pt", "sv"}
-	validThemes           = []string{"light", "dark", "system"}
-	validAutoMarkRead     = []string{"off", "open", "5", "10", "30"}
-	validTranslationModes = []string{"zh", "bilingual"}
-	validLatinFonts       = []string{
+	validLocales              = []string{"en", "zh", "de", "fr", "es", "ru", "pt", "sv"}
+	validThemes               = []string{"light", "dark", "system"}
+	validAutoMarkRead         = []string{"off", "open", "5", "10", "30"}
+	validTranslationModes     = []string{"zh", "bilingual"}
+	validListTranslationModes = []string{"original", "zh", "bilingual"}
+	validLatinFonts           = []string{
 		"geist",
 		"inter",
 		"source-sans-3",
@@ -51,17 +52,18 @@ var (
 // decoding (both leave the pointer nil) and both mean "leave unchanged".
 // Translation credential strings treat an empty string "" as an explicit clear.
 type updateSettingsRequest struct {
-	Locale            *string `json:"locale"`
-	ArticlePageSize   *int64  `json:"article_page_size"`
-	Theme             *string `json:"theme"`
-	AutoMarkRead      *string `json:"auto_mark_read"`
-	LatinFont         *string `json:"latin_font"`
-	CJKFont           *string `json:"cjk_font"`
-	MonoFont          *string `json:"mono_font"`
-	TranslationAPIURL *string `json:"translation_api_url"`
-	TranslationAPIKey *string `json:"translation_api_key"`
-	TranslationModel  *string `json:"translation_model"`
-	TranslationMode   *string `json:"translation_mode"`
+	Locale              *string `json:"locale"`
+	ArticlePageSize     *int64  `json:"article_page_size"`
+	Theme               *string `json:"theme"`
+	AutoMarkRead        *string `json:"auto_mark_read"`
+	LatinFont           *string `json:"latin_font"`
+	CJKFont             *string `json:"cjk_font"`
+	MonoFont            *string `json:"mono_font"`
+	TranslationAPIURL   *string `json:"translation_api_url"`
+	TranslationAPIKey   *string `json:"translation_api_key"`
+	TranslationModel    *string `json:"translation_model"`
+	TranslationMode     *string `json:"translation_mode"`
+	ListTranslationMode *string `json:"list_translation_mode"`
 }
 
 func (h *Handler) getSettings(c *gin.Context) {
@@ -87,17 +89,18 @@ func (h *Handler) updateSettings(c *gin.Context) {
 	}
 
 	if err := h.store.UpdateSettings(store.UpdateSettingsParams{
-		Locale:            req.Locale,
-		ArticlePageSize:   req.ArticlePageSize,
-		Theme:             req.Theme,
-		AutoMarkRead:      req.AutoMarkRead,
-		LatinFont:         req.LatinFont,
-		CJKFont:           req.CJKFont,
-		MonoFont:          req.MonoFont,
-		TranslationAPIURL: req.TranslationAPIURL,
-		TranslationAPIKey: req.TranslationAPIKey,
-		TranslationModel:  req.TranslationModel,
-		TranslationMode:   req.TranslationMode,
+		Locale:              req.Locale,
+		ArticlePageSize:     req.ArticlePageSize,
+		Theme:               req.Theme,
+		AutoMarkRead:        req.AutoMarkRead,
+		LatinFont:           req.LatinFont,
+		CJKFont:             req.CJKFont,
+		MonoFont:            req.MonoFont,
+		TranslationAPIURL:   req.TranslationAPIURL,
+		TranslationAPIKey:   req.TranslationAPIKey,
+		TranslationModel:    req.TranslationModel,
+		TranslationMode:     req.TranslationMode,
+		ListTranslationMode: req.ListTranslationMode,
 	}); err != nil {
 		internalError(c, err, "update settings")
 		return
@@ -142,6 +145,9 @@ func validateSettingsUpdate(req *updateSettingsRequest) error {
 	}
 	if req.TranslationMode != nil && !slices.Contains(validTranslationModes, *req.TranslationMode) {
 		return fmt.Errorf("invalid translation_mode")
+	}
+	if req.ListTranslationMode != nil && !slices.Contains(validListTranslationModes, *req.ListTranslationMode) {
+		return fmt.Errorf("invalid list_translation_mode")
 	}
 	return nil
 }

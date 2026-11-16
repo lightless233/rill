@@ -7,6 +7,7 @@ import {
   isAutoMarkRead,
   isCJKFont,
   isLatinFont,
+  isListTranslationMode,
   isMonoFont,
   isSupportedLocale,
   isTranslationMode,
@@ -174,6 +175,16 @@ export async function pullRemoteSettings(): Promise<void> {
       settings.translation_mode !== preferences.translationMode
     ) {
       usePreferencesStore.getState().setTranslationMode(settings.translation_mode);
+    }
+
+    if (
+      settings.list_translation_mode !== null &&
+      isListTranslationMode(settings.list_translation_mode) &&
+      settings.list_translation_mode !== preferences.listTranslationMode
+    ) {
+      usePreferencesStore
+        .getState()
+        .setListTranslationMode(settings.list_translation_mode);
     }
 
     const storedTheme = localStorage.getItem("theme");

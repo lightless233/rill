@@ -2,7 +2,8 @@ import { Circle, CircleCheck, Star, ExternalLink } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { cn, formatDate, extractSummary } from "@/lib/utils";
-import type { Item } from "@/lib/api";
+import type { Item, ListTranslationMode } from "@/lib/api";
+import type { ListTranslationText } from "@/lib/list-translation";
 import { FeedFavicon } from "@/components/feed/feed-favicon";
 import { toSafeExternalUrl } from "@/lib/safe-url";
 
@@ -16,6 +17,8 @@ interface ArticleItemProps {
   isStarred: boolean;
   feedName: string;
   feedFaviconUrl: string | null;
+  translation?: ListTranslationText;
+  translationMode: ListTranslationMode;
 }
 
 export function ArticleItem({
@@ -28,11 +31,18 @@ export function ArticleItem({
   isStarred,
   feedName,
   feedFaviconUrl,
+  translation,
+  translationMode,
 }: ArticleItemProps) {
   const { t } = useI18n();
 
   const isSelected = selectedArticleId === article.id;
   const safeArticleLink = toSafeExternalUrl(article.link);
+  const translatedTitle = translation?.title?.trim() ?? "";
+  const translatedSummary = translation?.summary?.trim() ?? "";
+  const showChineseTitle = translationMode === "zh" && Boolean(translatedTitle);
+  const showChineseSummary =
+    translationMode === "zh" && Boolean(translatedSummary);
 
   const handleToggleRead = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -77,12 +87,39 @@ export function ArticleItem({
             "article-typography line-clamp-2 text-[15px] leading-snug font-medium",
             article.unread ? "text-foreground" : "text-muted-foreground",
           )}
+          lang={showChineseTitle ? "zh-CN" : undefined}
         >
-          {article.title}
+          {showChineseTitle ? translatedTitle : article.title}
         </h3>
-        <p className="article-typography line-clamp-2 text-sm text-muted-foreground">
-          {extractSummary(article.content, 150)}
+        {translationMode === "bilingual" && translatedTitle && (
+          <p
+            className={cn(
+              "article-typography line-clamp-2 text-[13px] leading-snug",
+              article.unread
+                ? "text-foreground/75"
+                : "text-muted-foreground",
+            )}
+            lang="zh-CN"
+          >
+            {translatedTitle}
+          </p>
+        )}
+        <p
+          className="article-typography line-clamp-2 text-sm text-muted-foreground"
+          lang={showChineseSummary ? "zh-CN" : undefined}
+        >
+          {showChineseSummary
+            ? translatedSummary
+            : extractSummary(article.content, 150)}
         </p>
+        {translationMode === "bilingual" && translatedSummary && (
+          <p
+            className="article-typography line-clamp-2 text-sm text-muted-foreground/80"
+            lang="zh-CN"
+          >
+            {translatedSummary}
+          </p>
+        )}
         <div className="flex items-center gap-2 text-xs">
           <FeedFavicon src={feedFaviconUrl} className="h-3.5 w-3.5 rounded-sm" />
           <span className="truncate font-medium text-muted-foreground">

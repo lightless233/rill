@@ -12,12 +12,20 @@ import {
   type MonoFont,
 } from "@/lib/fonts";
 
-import type { TranslationMode } from "@/lib/api/types";
+import type {
+  ListTranslationMode,
+  TranslationMode,
+} from "@/lib/api/types";
 
 export { cjkFontOptions, latinFontOptions, monoFontOptions };
 export type { CJKFont, LatinFont, MonoFont };
 
 export const translationModeOptions = ["bilingual", "zh"] as const;
+export const listTranslationModeOptions = [
+  "original",
+  "zh",
+  "bilingual",
+] as const satisfies readonly ListTranslationMode[];
 
 export const supportedLocales = [
   "en",
@@ -48,6 +56,9 @@ const latinFontSet = new Set<LatinFont>(latinFontOptions);
 const cjkFontSet = new Set<CJKFont>(cjkFontOptions);
 const monoFontSet = new Set<MonoFont>(monoFontOptions);
 const translationModeSet = new Set<TranslationMode>(translationModeOptions);
+const listTranslationModeSet = new Set<ListTranslationMode>(
+  listTranslationModeOptions,
+);
 
 function resolveSupportedLocale(locale: string): AppLocale | null {
   const normalized = locale.toLowerCase().replace("_", "-");
@@ -71,6 +82,10 @@ const defaultLocale: AppLocale =
 const defaultArticlePageSize: ArticlePageSize = 10;
 const defaultAutoMarkRead: AutoMarkRead = "off";
 const defaultTranslationMode: TranslationMode = "bilingual";
+
+// null means "never chosen"; the effective mode depends on whether a
+// translation API key is configured. Do not normalize this to a fixed mode.
+const defaultListTranslationMode: ListTranslationMode | null = null;
 
 function normalizeLocale(locale: string): AppLocale {
   const supportedLocale = resolveSupportedLocale(locale);
@@ -124,6 +139,15 @@ function normalizeTranslationMode(
     : defaultTranslationMode;
 }
 
+function normalizeListTranslationMode(
+  value: string | undefined | null,
+): ListTranslationMode | null {
+  return value !== null &&
+    listTranslationModeSet.has(value as ListTranslationMode)
+    ? (value as ListTranslationMode)
+    : null;
+}
+
 // "off" disables the feature; every other member maps to a delay where 0
 // means "as soon as the article is open".
 export function autoMarkReadDelayMs(option: AutoMarkRead): number | null {
@@ -141,6 +165,7 @@ export interface PreferencesState {
   cjkFont: CJKFont;
   monoFont: MonoFont;
   translationMode: TranslationMode;
+  listTranslationMode: ListTranslationMode | null;
   setLocale: (locale: string) => void;
   setArticlePageSize: (size: number) => void;
   setAutoMarkRead: (option: string) => void;
@@ -148,6 +173,7 @@ export interface PreferencesState {
   setCJKFont: (font: string) => void;
   setMonoFont: (font: string) => void;
   setTranslationMode: (mode: string) => void;
+  setListTranslationMode: (mode: string | null) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -160,6 +186,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       cjkFont: defaultCJKFont,
       monoFont: defaultMonoFont,
       translationMode: defaultTranslationMode,
+      listTranslationMode: defaultListTranslationMode,
       setLocale: (locale) => set({ locale: normalizeLocale(locale) }),
       setArticlePageSize: (size) =>
         set({ articlePageSize: normalizeArticlePageSize(size) }),
@@ -170,6 +197,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       setMonoFont: (font) => set({ monoFont: normalizeMonoFont(font) }),
       setTranslationMode: (mode) =>
         set({ translationMode: normalizeTranslationMode(mode) }),
+      setListTranslationMode: (mode) =>
+        set({ listTranslationMode: normalizeListTranslationMode(mode) }),
     }),
     {
       name: "fusion-preferences",
@@ -182,6 +211,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         cjkFont: state.cjkFont,
         monoFont: state.monoFont,
         translationMode: state.translationMode,
+        listTranslationMode: state.listTranslationMode,
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PreferencesState> | undefined;
@@ -206,6 +236,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           ),
           translationMode: normalizeTranslationMode(
             persisted?.translationMode ?? currentState.translationMode,
+          ),
+          listTranslationMode: normalizeListTranslationMode(
+            persisted?.listTranslationMode ?? currentState.listTranslationMode,
           ),
         };
       },
@@ -243,4 +276,10 @@ export function isMonoFont(value: string): value is MonoFont {
 
 export function isTranslationMode(value: string): value is TranslationMode {
   return translationModeSet.has(value as TranslationMode);
+}
+
+export function isListTranslationMode(
+  value: string,
+): value is ListTranslationMode {
+  return listTranslationModeSet.has(value as ListTranslationMode);
 }

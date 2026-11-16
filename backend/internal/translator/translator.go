@@ -155,6 +155,16 @@ func ComputeContentHash(title string, blocks []Segment) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// ComputeListContentHash returns a deterministic SHA-256 hex digest for one
+// article-list item's title and excerpt. The namespace prevents these cache
+// entries from colliding with article-body translation hashes.
+func ComputeListContentHash(title, summary string) string {
+	h := sha256.New()
+	writeLenPrefixed(h, "list-title:"+strings.TrimSpace(title))
+	writeLenPrefixed(h, "list-summary:"+strings.TrimSpace(summary))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // ComputeSummaryHash returns a deterministic SHA-256 hex digest covering the
 // article title and normalized plain-text content for AI summary caching.
 func ComputeSummaryHash(title, content string) string {

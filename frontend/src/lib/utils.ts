@@ -62,12 +62,41 @@ export function formatRelativeTime(timestamp: number): string {
   return rtf.format(years, "year");
 }
 
-export function extractSummary(html: string, maxLength = 120): string {
-  // Strip all HTML tags to get plain text
+function normalizeSummaryText(html: string): string {
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [] });
-  // Normalize whitespace
-  const text = clean.replace(/\s+/g, " ").trim();
+  return clean.replace(/\s+/g, " ").trim();
+}
+
+/** Cuts normalized prose at a sentence or word boundary instead of mid-word. */
+export function truncateTextAtBoundary(text: string, maxLength: number): string {
+  if (maxLength <= 0 || text.length <= maxLength) return text;
+
+  const slice = text.slice(0, maxLength);
+  for (let i = slice.length - 1; i >= 0; i--) {
+    if (!/[.!?。！？]/.test(slice[i])) continue;
+    const next = slice[i + 1];
+    if (next && !/\s/.test(next)) continue;
+    const candidate = slice.slice(0, i + 1).trimEnd();
+    if (candidate) return candidate;
+  }
+
+  const lastSpace = slice.search(/\s+\S*$/);
+  if (lastSpace > 0) {
+    return slice.slice(0, lastSpace).trimEnd();
+  }
+  return slice.trimEnd();
+}
+
+export function extractSummary(html: string, maxLength = 120): string {
+  const text = normalizeSummaryText(html);
   if (text.length <= maxLength) return text;
-  // Truncate and add ellipsis
   return text.slice(0, maxLength).trimEnd() + "…";
+}
+
+/**
+ * Longer plain-text source for list translation. Reuses the same sanitizing and
+ * whitespace normalization as the display excerpt, but avoids a mid-word cut.
+ */
+export function extractTranslationSource(html: string, maxLength = 400): string {
+  return truncateTextAtBoundary(normalizeSummaryText(html), maxLength);
 }

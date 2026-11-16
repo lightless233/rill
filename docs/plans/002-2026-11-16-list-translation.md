@@ -1,6 +1,6 @@
 # 002: Article list automatic translation implementation plan
 
-Status: planning only; do not start implementation from this document.
+Status: implementation complete; aggregate local verification complete (2026-11-16).
 
 Contract: [Spec 002](../specs/002-2026-11-16-list-translation.md).
 

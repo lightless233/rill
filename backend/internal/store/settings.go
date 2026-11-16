@@ -69,6 +69,7 @@ func (s *Store) GetSettings() (*model.Settings, error) {
 			translation_api_key,
 			translation_model,
 			translation_mode,
+			list_translation_mode,
 			updated_at
 		FROM settings
 		WHERE id = 1
@@ -84,6 +85,7 @@ func (s *Store) GetSettings() (*model.Settings, error) {
 		&apiKey,
 		&modelName,
 		&settings.TranslationMode,
+		&settings.ListTranslationMode,
 		&settings.UpdatedAt,
 	)
 	if err != nil {
@@ -126,17 +128,18 @@ func (s *Store) GetTranslationConfig() (*TranslationConfig, error) {
 // UpdateSettingsParams supports partial updates. Only non-nil fields will be
 // updated; nil means "leave unchanged".
 type UpdateSettingsParams struct {
-	Locale            *string
-	ArticlePageSize   *int64
-	Theme             *string
-	AutoMarkRead      *string
-	LatinFont         *string
-	CJKFont           *string
-	MonoFont          *string
-	TranslationAPIURL *string
-	TranslationAPIKey *string
-	TranslationModel  *string
-	TranslationMode   *string
+	Locale              *string
+	ArticlePageSize     *int64
+	Theme               *string
+	AutoMarkRead        *string
+	LatinFont           *string
+	CJKFont             *string
+	MonoFont            *string
+	TranslationAPIURL   *string
+	TranslationAPIKey   *string
+	TranslationModel    *string
+	TranslationMode     *string
+	ListTranslationMode *string
 }
 
 // UpdateSettings upserts the singleton settings row. Fields set to nil keep
@@ -148,7 +151,7 @@ func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 		params.AutoMarkRead == nil && params.LatinFont == nil && params.CJKFont == nil &&
 		params.MonoFont == nil && params.TranslationAPIURL == nil &&
 		params.TranslationAPIKey == nil && params.TranslationModel == nil &&
-		params.TranslationMode == nil {
+		params.TranslationMode == nil && params.ListTranslationMode == nil {
 		return nil
 	}
 
@@ -169,7 +172,8 @@ func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 			translation_api_url,
 			translation_api_key,
 			translation_model,
-			translation_mode
+			translation_mode,
+			list_translation_mode
 		)
 		VALUES (
 			1,
@@ -183,7 +187,8 @@ func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 			:translation_api_url,
 			:translation_api_key,
 			:translation_model,
-			:translation_mode
+			:translation_mode,
+			:list_translation_mode
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			locale = COALESCE(excluded.locale, settings.locale),
@@ -197,6 +202,7 @@ func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 			translation_api_key = COALESCE(excluded.translation_api_key, settings.translation_api_key),
 			translation_model = COALESCE(excluded.translation_model, settings.translation_model),
 			translation_mode = COALESCE(excluded.translation_mode, settings.translation_mode),
+			list_translation_mode = COALESCE(excluded.list_translation_mode, settings.list_translation_mode),
 			updated_at = unixepoch()
 	`,
 		sql.Named("locale", params.Locale),
@@ -210,6 +216,7 @@ func (s *Store) UpdateSettings(params UpdateSettingsParams) error {
 		sql.Named("translation_api_key", apiKey),
 		sql.Named("translation_model", modelName),
 		sql.Named("translation_mode", params.TranslationMode),
+		sql.Named("list_translation_mode", params.ListTranslationMode),
 	)
 	if err != nil {
 		return fmt.Errorf("update settings: %w", err)

@@ -1,6 +1,6 @@
 # 002: Article list automatic translation
 
-Status: requirements and design decisions recorded; implementation not started.
+Status: implemented; aggregate local verification complete (2026-11-16).
 
 Contract: [implementation plan](../plans/002-2026-11-16-list-translation.md).
 

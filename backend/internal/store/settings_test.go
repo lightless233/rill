@@ -20,7 +20,7 @@ func TestGetSettingsEmpty(t *testing.T) {
 	}
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
 		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
-		settings.MonoFont != nil {
+		settings.MonoFont != nil || settings.ListTranslationMode != nil {
 		t.Errorf("expected all-nil settings on empty database, got %+v", settings)
 	}
 }
@@ -73,13 +73,14 @@ func TestUpdateSettingsAllFields(t *testing.T) {
 	defer closeStore(t, store)
 
 	err := store.UpdateSettings(UpdateSettingsParams{
-		Locale:          strPtr("zh"),
-		ArticlePageSize: int64Ptr(50),
-		Theme:           strPtr("system"),
-		AutoMarkRead:    strPtr("open"),
-		LatinFont:       strPtr("newsreader"),
-		CJKFont:         strPtr("noto-serif-sc"),
-		MonoFont:        strPtr("jetbrains-mono"),
+		Locale:              strPtr("zh"),
+		ArticlePageSize:     int64Ptr(50),
+		Theme:               strPtr("system"),
+		AutoMarkRead:        strPtr("open"),
+		LatinFont:           strPtr("newsreader"),
+		CJKFont:             strPtr("noto-serif-sc"),
+		MonoFont:            strPtr("jetbrains-mono"),
+		ListTranslationMode: strPtr("bilingual"),
 	})
 	if err != nil {
 		t.Fatalf("UpdateSettings(all fields) failed: %v", err)
@@ -90,20 +91,47 @@ func TestUpdateSettingsAllFields(t *testing.T) {
 		t.Fatalf("GetSettings() failed: %v", err)
 	}
 	want := &model.Settings{
-		Locale:          strPtr("zh"),
-		ArticlePageSize: int64Ptr(50),
-		Theme:           strPtr("system"),
-		AutoMarkRead:    strPtr("open"),
-		LatinFont:       strPtr("newsreader"),
-		CJKFont:         strPtr("noto-serif-sc"),
-		MonoFont:        strPtr("jetbrains-mono"),
-		UpdatedAt:       settings.UpdatedAt,
+		Locale:              strPtr("zh"),
+		ArticlePageSize:     int64Ptr(50),
+		Theme:               strPtr("system"),
+		AutoMarkRead:        strPtr("open"),
+		LatinFont:           strPtr("newsreader"),
+		CJKFont:             strPtr("noto-serif-sc"),
+		MonoFont:            strPtr("jetbrains-mono"),
+		ListTranslationMode: strPtr("bilingual"),
+		UpdatedAt:           settings.UpdatedAt,
 	}
 	if *settings.Locale != *want.Locale || *settings.ArticlePageSize != *want.ArticlePageSize ||
 		*settings.Theme != *want.Theme || *settings.AutoMarkRead != *want.AutoMarkRead ||
 		*settings.LatinFont != *want.LatinFont || *settings.CJKFont != *want.CJKFont ||
-		*settings.MonoFont != *want.MonoFont {
+		*settings.MonoFont != *want.MonoFont ||
+		settings.ListTranslationMode == nil ||
+		*settings.ListTranslationMode != *want.ListTranslationMode {
 		t.Errorf("got %+v, want %+v", settings, want)
+	}
+}
+
+// The all-nil short circuit must know the new list translation column, or a
+// PATCH carrying only this field is silently dropped.
+func TestUpdateSettingsListTranslationModeOnly(t *testing.T) {
+	store, _ := setupTestDB(t)
+	defer closeStore(t, store)
+
+	if err := store.UpdateSettings(UpdateSettingsParams{
+		ListTranslationMode: strPtr("zh"),
+	}); err != nil {
+		t.Fatalf("UpdateSettings(list_translation_mode) failed: %v", err)
+	}
+
+	settings, err := store.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings() failed: %v", err)
+	}
+	if settings.ListTranslationMode == nil || *settings.ListTranslationMode != "zh" {
+		t.Fatalf("expected list_translation_mode=\"zh\", got %+v", settings)
+	}
+	if settings.Locale != nil {
+		t.Errorf("expected locale to stay unset, got %v", *settings.Locale)
 	}
 }
 

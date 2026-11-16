@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ import {
 import {
   autoMarkReadOptions,
   articlePageSizeOptions,
+  listTranslationModeOptions,
   supportedLocales,
   translationModeOptions,
   usePreferencesStore,
@@ -52,10 +53,17 @@ import {
   APIError,
   settingsAPI,
   translationAPI,
+  type ListTranslationMode,
   type TranslationMode,
   type UpdateSettingsRequest,
 } from "@/lib/api";
 import { waitForSettingsSeed } from "@/lib/settings-sync";
+import { effectiveListTranslationMode } from "@/lib/list-translation";
+import {
+  beginChange,
+  changeGenerations,
+  useApplySetting,
+} from "@/hooks/use-apply-setting";
 import { queryKeys } from "@/queries/keys";
 import { useSettingsQuery } from "@/queries/settings";
 import type { AppLocale } from "@/store/preferences";
@@ -66,65 +74,6 @@ function GithubIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
       <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
     </svg>
-  );
-}
-
-// Module scope so the counters survive unmounting a tab or the dialog
-// itself: a late-failing save from an old mount must not revert a newer
-// change made on a new one.
-const changeGenerations = {
-  locale: 0,
-  pageSize: 0,
-  theme: 0,
-  autoMarkRead: 0,
-  latinFont: 0,
-  cjkFont: 0,
-  monoFont: 0,
-  translationMode: 0,
-};
-
-function beginChange(field: keyof typeof changeGenerations): number {
-  return ++changeGenerations[field];
-}
-
-// Applies the change locally right away and persists just that key. The
-// generation (taken synchronously when the user makes the change) ensures a
-// stale in-flight save (awaited catalog load, seed, or slow PATCH) neither
-// sends nor errors after a newer change has superseded it. On a failed save
-// the caller's revert runs; a 401 is already being handled by the global
-// interceptor.
-function useApplySetting() {
-  const { t } = useI18n();
-
-  return useCallback(
-    async (
-      field: keyof typeof changeGenerations,
-      generation: number,
-      patch: UpdateSettingsRequest,
-      apply: () => void,
-      revert: () => void,
-    ) => {
-      apply();
-      try {
-        // Let a first-load seed finish first so it cannot land on top of
-        // this change; a superseded change skips the request entirely.
-        await waitForSettingsSeed();
-        if (changeGenerations[field] !== generation) {
-          return;
-        }
-        await settingsAPI.update(patch);
-      } catch (error) {
-        if (error instanceof APIError && error.status === 401) {
-          return;
-        }
-        if (changeGenerations[field] !== generation) {
-          return;
-        }
-        revert();
-        toast.error(t("settings.syncFailed"));
-      }
-    },
-    [t],
   );
 }
 
@@ -597,7 +546,12 @@ function TranslationContent() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const applySetting = useApplySetting();
-  const { translationMode, setTranslationMode } = usePreferencesStore();
+  const {
+    translationMode,
+    setTranslationMode,
+    listTranslationMode,
+    setListTranslationMode,
+  } = usePreferencesStore();
   const { data: settingsData } = useSettingsQuery();
 
   const [apiURLDraft, setApiURLDraft] = useState<string | null>(null);
@@ -616,6 +570,21 @@ function TranslationContent() {
       mode === "bilingual"
         ? t("settings.translation.mode.bilingual")
         : t("settings.translation.mode.zh"),
+  }));
+
+  const hasSavedKey = Boolean(settingsData?.translation_api_key_set);
+  const effectiveListMode = effectiveListTranslationMode(
+    listTranslationMode,
+    hasSavedKey,
+  );
+  const listModeItems = listTranslationModeOptions.map((mode) => ({
+    value: mode,
+    label:
+      mode === "bilingual"
+        ? t("article.translation.mode.bilingual")
+        : mode === "zh"
+          ? t("article.translation.mode.zh")
+          : t("article.translation.mode.original"),
   }));
 
   const handleSave = async (e: React.FormEvent) => {
@@ -704,11 +673,53 @@ function TranslationContent() {
     }
   };
 
-  const hasSavedKey = Boolean(settingsData?.translation_api_key_set);
   const keyMask = settingsData?.translation_api_key_mask ?? "";
 
   return (
     <div className="space-y-6">
+      {/* Article list translation */}
+      <div className="flex items-center justify-between gap-6">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium">
+            {t("settings.translation.listMode.label")}
+          </p>
+          <p className="text-[13px] text-muted-foreground">
+            {t("settings.translation.listMode.description")}
+          </p>
+        </div>
+        <Select
+          items={listModeItems}
+          value={effectiveListMode}
+          onValueChange={(nextValue) => {
+            if (!nextValue) return;
+            const nextMode = nextValue as ListTranslationMode;
+            if (!hasSavedKey && nextMode !== "original") {
+              toast.info(t("article.translation.missingConfig"));
+              return;
+            }
+            const previous = listTranslationMode;
+            void applySetting(
+              "listTranslationMode",
+              beginChange("listTranslationMode"),
+              { list_translation_mode: nextMode },
+              () => setListTranslationMode(nextMode),
+              () => setListTranslationMode(previous),
+            );
+          }}
+        >
+          <SelectTrigger className="w-auto min-w-36 shrink-0 justify-between gap-2 border-border">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {listModeItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Default display mode */}
       <div className="flex items-center justify-between gap-6">
         <div className="min-w-0 space-y-1">

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/0x2E/fusion/internal/model"
 	"github.com/0x2E/fusion/internal/store"
@@ -16,7 +17,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const maxTranslationBlocks = 2000
+const (
+	maxTranslationBlocks           = 2000
+	maxListTranslationItems        = 50
+	maxListTranslationTitleRunes   = 500
+	maxListTranslationSummaryRunes = 2000
+	listCacheSummaryBlockID        = 0
+)
 
 type translationBlockRequest struct {
 	ID   int    `json:"id"`
@@ -219,6 +226,290 @@ func startSSEStream(w http.ResponseWriter) func(eventName string, payload any) e
 		}
 		return rc.Flush()
 	}
+}
+
+type listTranslationItemRequest struct {
+	ItemID  int64  `json:"item_id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+}
+
+type listTranslationRequest struct {
+	Items []listTranslationItemRequest `json:"items"`
+	Force bool                         `json:"force"`
+}
+
+type listTranslationItemEvent struct {
+	ItemID            int64  `json:"item_id"`
+	TranslatedTitle   string `json:"translated_title,omitempty"`
+	TranslatedSummary string `json:"translated_summary,omitempty"`
+	Cached            bool   `json:"cached"`
+}
+
+type listTranslationState struct {
+	request           listTranslationItemRequest
+	contentHash       string
+	titleSegmentID    int
+	summarySegmentID  int
+	translatedTitle   string
+	translatedSummary string
+	receivedFields    int
+	requiredFields    int
+	cached            bool
+	emitted           bool
+}
+
+type listTranslationSegmentTarget struct {
+	stateIndex int
+	isTitle    bool
+}
+
+func validateListTranslationRequest(req *listTranslationRequest) error {
+	if len(req.Items) == 0 {
+		return fmt.Errorf("items is required")
+	}
+	if len(req.Items) > maxListTranslationItems {
+		return fmt.Errorf("too many items")
+	}
+
+	seen := make(map[int64]struct{}, len(req.Items))
+	for _, item := range req.Items {
+		if _, exists := seen[item.ItemID]; exists {
+			return fmt.Errorf("duplicate item_id")
+		}
+		seen[item.ItemID] = struct{}{}
+
+		if utf8.RuneCountInString(strings.TrimSpace(item.Title)) > maxListTranslationTitleRunes {
+			return fmt.Errorf("title too long")
+		}
+		if utf8.RuneCountInString(strings.TrimSpace(item.Summary)) > maxListTranslationSummaryRunes {
+			return fmt.Errorf("summary too long")
+		}
+		if strings.TrimSpace(item.Title) == "" && strings.TrimSpace(item.Summary) == "" {
+			return fmt.Errorf("empty item")
+		}
+	}
+	return nil
+}
+
+func cachedListTranslation(cached *model.ArticleTranslation, title, summary string) (string, string, bool) {
+	if cached == nil {
+		return "", "", false
+	}
+
+	translatedTitle := strings.TrimSpace(cached.TranslatedTitle)
+	translatedSummary := ""
+	for _, block := range cached.Blocks {
+		if block.ID == listCacheSummaryBlockID {
+			translatedSummary = strings.TrimSpace(block.Text)
+			break
+		}
+	}
+
+	if strings.TrimSpace(title) != "" && translatedTitle == "" {
+		return "", "", false
+	}
+	if strings.TrimSpace(summary) != "" && translatedSummary == "" {
+		return "", "", false
+	}
+	return translatedTitle, translatedSummary, true
+}
+
+func emitListItem(sendEvent func(string, any) error, state *listTranslationState, cached bool) error {
+	if state.emitted {
+		return nil
+	}
+
+	event := listTranslationItemEvent{
+		ItemID: state.request.ItemID,
+		Cached: cached,
+	}
+	if state.titleSegmentID >= 0 {
+		event.TranslatedTitle = state.translatedTitle
+	}
+	if state.summarySegmentID >= 0 {
+		event.TranslatedSummary = state.translatedSummary
+	}
+	if err := sendEvent("item", event); err != nil {
+		return err
+	}
+	state.emitted = true
+	return nil
+}
+
+func (h *Handler) saveListTranslation(state *listTranslationState, modelName string) error {
+	blocks := make([]model.TranslatedSegment, 0, 1)
+	if state.summarySegmentID >= 0 {
+		blocks = append(blocks, model.TranslatedSegment{
+			ID:   listCacheSummaryBlockID,
+			Text: state.translatedSummary,
+		})
+	}
+
+	return h.store.SaveArticleTranslation(store.SaveArticleTranslationParams{
+		ContentHash:     state.contentHash,
+		TargetLang:      translator.DefaultTargetLang,
+		SourceTitle:     strings.TrimSpace(state.request.Title),
+		TranslatedTitle: state.translatedTitle,
+		Blocks:          blocks,
+		Model:           modelName,
+	})
+}
+
+func (h *Handler) translateItems(c *gin.Context) {
+	var req listTranslationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequestError(c, "invalid request")
+		return
+	}
+	if err := validateListTranslationRequest(&req); err != nil {
+		badRequestError(c, err.Error())
+		return
+	}
+
+	cfg, ok := h.loadConfiguredAIConfig(c)
+	if !ok {
+		return
+	}
+
+	states := make([]listTranslationState, len(req.Items))
+	cachedCount := 0
+	missCount := 0
+
+	for i, item := range req.Items {
+		title := strings.TrimSpace(item.Title)
+		summary := strings.TrimSpace(item.Summary)
+		state := listTranslationState{
+			request:          item,
+			contentHash:      translator.ComputeListContentHash(title, summary),
+			titleSegmentID:   -1,
+			summarySegmentID: -1,
+		}
+		if title != "" {
+			state.titleSegmentID = i * 2
+		}
+		if summary != "" {
+			state.summarySegmentID = i*2 + 1
+		}
+		states[i] = state
+
+		if !req.Force {
+			cached, err := h.store.GetArticleTranslation(state.contentHash, translator.DefaultTargetLang)
+			if err != nil {
+				internalError(c, err, "lookup list translation")
+				return
+			}
+			translatedTitle, translatedSummary, complete := cachedListTranslation(cached, title, summary)
+			if complete {
+				states[i].translatedTitle = translatedTitle
+				states[i].translatedSummary = translatedSummary
+				states[i].cached = true
+				cachedCount++
+				continue
+			}
+		}
+
+		if title != "" {
+			states[i].requiredFields++
+		}
+		if summary != "" {
+			states[i].requiredFields++
+		}
+		missCount++
+	}
+
+	sendEvent := startSSEStream(c.Writer)
+	modelName := cfg.Model
+	if err := sendEvent("meta", gin.H{"model": modelName, "total": len(req.Items)}); err != nil {
+		return
+	}
+
+	for i := range states {
+		if !states[i].cached {
+			continue
+		}
+		if err := emitListItem(sendEvent, &states[i], true); err != nil {
+			return
+		}
+	}
+
+	if missCount == 0 {
+		_ = sendEvent("done", gin.H{"model": modelName, "translated": 0, "cached": cachedCount})
+		return
+	}
+
+	segments := make([]translator.Segment, 0, len(req.Items)*2)
+	targets := make(map[int]listTranslationSegmentTarget, len(req.Items)*2)
+	for i := range states {
+		if states[i].cached {
+			continue
+		}
+		if states[i].titleSegmentID >= 0 {
+			segments = append(segments, translator.Segment{
+				ID:   states[i].titleSegmentID,
+				Text: strings.TrimSpace(states[i].request.Title),
+			})
+			targets[states[i].titleSegmentID] = listTranslationSegmentTarget{stateIndex: i, isTitle: true}
+		}
+		if states[i].summarySegmentID >= 0 {
+			segments = append(segments, translator.Segment{
+				ID:   states[i].summarySegmentID,
+				Text: strings.TrimSpace(states[i].request.Summary),
+			})
+			targets[states[i].summarySegmentID] = listTranslationSegmentTarget{stateIndex: i}
+		}
+	}
+
+	_, err := h.translator.TranslateArticle(
+		c.Request.Context(),
+		cfg,
+		"",
+		segments,
+		func(key, text string) error {
+			segmentID, err := strconv.Atoi(key)
+			if err != nil {
+				return nil
+			}
+			target, exists := targets[segmentID]
+			if !exists {
+				return nil
+			}
+
+			state := &states[target.stateIndex]
+			if target.isTitle {
+				state.translatedTitle = text
+			} else {
+				state.translatedSummary = text
+			}
+			state.receivedFields++
+			if state.receivedFields < state.requiredFields {
+				return nil
+			}
+
+			if err := h.saveListTranslation(state, modelName); err != nil {
+				slog.Warn("failed to cache list translation", "item_id", state.request.ItemID, "error", err)
+			}
+			return emitListItem(sendEvent, state, false)
+		},
+	)
+	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		slog.Warn("list translation failed", "error", err)
+		_ = sendEvent("error", gin.H{"error": err.Error()})
+		return
+	}
+
+	for i := range states {
+		if states[i].cached || states[i].emitted {
+			continue
+		}
+		_ = sendEvent("error", gin.H{"error": "translation incomplete"})
+		return
+	}
+
+	_ = sendEvent("done", gin.H{"model": modelName, "translated": missCount, "cached": cachedCount})
 }
 
 func (h *Handler) translateArticle(c *gin.Context) {

@@ -265,3 +265,152 @@ func TestIncompleteTranslationAndTruncatedSummaryNotCached(t *testing.T) {
 		t.Fatalf("expected truncated summary not to be cached, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListTranslationFlowStreamAndCache(t *testing.T) {
+	var upstreamCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+
+		for _, chunk := range []string{
+			"[[0]]\n标题一",
+			"\n[[1]]\n摘要一",
+			"\n[[2]]\n标题二",
+			"\n[[3]]\n摘要二\n",
+		} {
+			payload, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{"delta": map[string]string{"content": chunk}}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	r, cookie := newSettingsTestRouter(t)
+	body := `{"items":[{"item_id":-1,"title":"Title one","summary":"Summary one"},{"item_id":2,"title":"Title two","summary":"Summary two"}]}`
+
+	// Missing key is rejected before the stream begins.
+	w := performRequest(r, http.MethodPost, "/api/translations/items", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 without API key, got %d: %s", w.Code, w.Body.String())
+	}
+
+	patchBody := fmt.Sprintf(`{"translation_api_url":%q,"translation_api_key":"sk-mock-key","translation_model":"deepseek-chat"}`, upstream.URL)
+	w = performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(patchBody), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH settings failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	w = performRequest(r, http.MethodPost, "/api/translations/items", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /api/translations/items failed: %d: %s", w.Code, w.Body.String())
+	}
+	streamBody := w.Body.String()
+	for _, want := range []string{
+		"event: meta",
+		`"item_id":-1`,
+		`"translated_title":"标题一"`,
+		`"translated_summary":"摘要一"`,
+		`"cached":false`,
+		"event: done",
+	} {
+		if !strings.Contains(streamBody, want) {
+			t.Fatalf("expected stream to contain %q, got: %s", want, streamBody)
+		}
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected one upstream call, got %d", upstreamCalls.Load())
+	}
+
+	// The second request is served from the translation cache.
+	w = performRequest(r, http.MethodPost, "/api/translations/items", strings.NewReader(body), nil, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"cached":true`) || !strings.Contains(w.Body.String(), "event: done") {
+		t.Fatalf("expected cached replay with done, got %d: %s", w.Code, w.Body.String())
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected cache hit to avoid upstream, got %d calls", upstreamCalls.Load())
+	}
+
+	// force bypasses the cache.
+	forceBody := strings.Replace(body, "{", `{"force":true,`, 1)
+	w = performRequest(r, http.MethodPost, "/api/translations/items", strings.NewReader(forceBody), nil, cookie)
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), `"cached":true`) {
+		t.Fatalf("expected force request to bypass cache, got %d: %s", w.Code, w.Body.String())
+	}
+	if upstreamCalls.Load() != 2 {
+		t.Fatalf("expected force to call upstream again, got %d calls", upstreamCalls.Load())
+	}
+}
+
+func TestListTranslationValidation(t *testing.T) {
+	r, cookie := newSettingsTestRouter(t)
+
+	tooMany := make([]map[string]any, maxListTranslationItems+1)
+	for i := range tooMany {
+		tooMany[i] = map[string]any{"item_id": i + 1, "title": "Title"}
+	}
+
+	longTitle := strings.Repeat("a", maxListTranslationTitleRunes+1)
+	cases := []struct {
+		name string
+		body any
+	}{
+		{"empty items", map[string]any{"items": []any{}}},
+		{"duplicate item id", map[string]any{"items": []map[string]any{
+			{"item_id": 1, "title": "One"},
+			{"item_id": 1, "title": "Two"},
+		}}},
+		{"empty item", map[string]any{"items": []map[string]any{{"item_id": 1}}}},
+		{"too many items", map[string]any{"items": tooMany}},
+		{"title too long", map[string]any{"items": []map[string]any{{"item_id": 1, "title": longTitle}}}},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			w := performRequest(r, http.MethodPost, "/api/translations/items", mustJSONBody(t, tt.body), nil, cookie)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestListTranslationPartialFailureDoesNotEmitDone(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []map[string]any{{"delta": map[string]string{"content": "[[0]]\n标题一\n"}}},
+		})
+		_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", payload)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	r, cookie := newSettingsTestRouter(t)
+	patchBody := fmt.Sprintf(`{"translation_api_url":%q,"translation_api_key":"sk-mock-key","translation_model":"deepseek-chat"}`, upstream.URL)
+	w := performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(patchBody), nil, cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH settings failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	body := `{"items":[{"item_id":1,"title":"Title one"},{"item_id":2,"title":"Title two"}]}`
+	w = performRequest(r, http.MethodPost, "/api/translations/items", strings.NewReader(body), nil, cookie)
+	streamBody := w.Body.String()
+	if !strings.Contains(streamBody, `"item_id":1`) {
+		t.Fatalf("expected the completed item to be emitted, got: %s", streamBody)
+	}
+	if strings.Contains(streamBody, "event: done") {
+		t.Fatalf("partial failure must not emit done, got: %s", streamBody)
+	}
+	if !strings.Contains(streamBody, "event: error") {
+		t.Fatalf("expected an error event, got: %s", streamBody)
+	}
+}

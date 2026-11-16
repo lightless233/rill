@@ -90,6 +90,25 @@ Star/bookmark changes are deliberately the opposite pattern: un-starring removes
 
 Before filing "marked-read items still show up in the unread list" as a bug, check which half is reported: grayed rows while staying in the same unread list are this design working; rows surviving a filter/scope switch was the actual defect, fixed by the pin scoping (#262, #266).
 
+### List translation
+
+The list has an independent `list_translation_mode` preference (`original`,
+`zh`, `bilingual`). It reuses the same translation endpoint, key and model as
+article detail translation, but only translates the title and list excerpt of
+currently loaded pages. With a key configured and no explicit choice, the
+effective default is bilingual; without a key it is original. `original` is the
+manual off switch; it also cancels in-flight list work.
+
+Bilingual list presentation deliberately follows the article-detail hierarchy:
+the original title/excerpt remains primary, and the Chinese translation follows
+below it with reduced size and contrast. The list must not introduce a separate
+translation color or typography system.
+
+Batch completion is defined by the stream's `done` event, not by the transport
+promise resolving. A stream that ends without `done` (or omits a requested item)
+is incomplete: completed rows stay translated, missing rows keep the original
+and become retryable. An explicit cancellation is not a failure.
+
 ## 7. Search and bookmarks
 
 - Unified search (`GET /api/search`) returns feeds and items in one

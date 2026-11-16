@@ -96,10 +96,17 @@ Three cases return the status with an empty body instead: unknown routes
   `translation_api_key_set` and `translation_api_key_mask`). Closed sets: locale
   `en|zh|de|fr|es|ru|pt|sv`, theme `light|dark|system`, `auto_mark_read`
   `off|open|5|10|30`, `article_page_size` 1–100, `translation_mode`
-  `bilingual|zh`, and the typography allow-lists (`latin_font`, `cjk_font`,
-  `mono_font`) defined in `backend/internal/handler/settings.go`.
+  `bilingual|zh`, `list_translation_mode` `original|zh|bilingual`, and the
+  typography allow-lists (`latin_font`, `cjk_font`, `mono_font`) defined in
+  `backend/internal/handler/settings.go`.
 - `POST /api/translations` (`meta`, `segment`, `done`, `error`) and
   `POST /api/summaries` (`meta`, `delta`, `done`, `error`) stream
   `text/event-stream` events instead of a JSON envelope once pre-flight
   validation succeeds (invalid requests and missing credentials still return
   standard JSON errors).
+- `POST /api/translations/items` is the batch list-translation stream. It
+  accepts up to 50 caller-correlated title/excerpt items and emits `meta`,
+  `item`, `done` and `error` events. `done` is the batch-success marker and is
+  only emitted when every requested item has an `item` event; cached items are
+  emitted with `cached: true`. A stream that ends without `done` is incomplete
+  even if the HTTP response ended cleanly.

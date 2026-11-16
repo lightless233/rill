@@ -35,6 +35,10 @@ import type {
   TranslationTestResponse,
   SummarizeArticleRequest,
   SummaryLookupResponse,
+  TranslateListItemsRequest,
+  ListTranslationItemResponse,
+  ListTranslationMeta,
+  ListTranslationDone,
 } from "./types";
 
 // Session APIs
@@ -164,6 +168,12 @@ export interface SummaryStreamCallbacks {
   onDone?: (done: { summary: string; model: string; cached: boolean }) => void;
 }
 
+export interface ListTranslationStreamCallbacks {
+  onMeta?: (meta: ListTranslationMeta) => void;
+  onItem?: (item: ListTranslationItemResponse) => void;
+  onDone?: (done: ListTranslationDone) => void;
+}
+
 async function streamSSEEvents(
   path: string,
   body: unknown,
@@ -256,6 +266,28 @@ export const translationAPI = {
 
   test: (data: TranslationTestRequest) =>
     api.post<APIResponse<TranslationTestResponse>>("/translations/test", data),
+
+  translateItems: (
+    data: TranslateListItemsRequest,
+    callbacks: ListTranslationStreamCallbacks,
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamSSEEvents(
+      "/translations/items",
+      data,
+      (eventName, payload) => {
+        if (eventName === "meta") {
+          callbacks.onMeta?.(payload as unknown as ListTranslationMeta);
+        } else if (eventName === "item") {
+          callbacks.onItem?.(
+            payload as unknown as ListTranslationItemResponse,
+          );
+        } else if (eventName === "done") {
+          callbacks.onDone?.(payload as unknown as ListTranslationDone);
+        }
+      },
+      signal,
+    ),
 
   stream: (
     data: TranslateArticleRequest,

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -51,6 +52,88 @@ func TestMigrateIdempotent(t *testing.T) {
 
 	if finalCount != initialCount {
 		t.Errorf("migrations were re-applied: initial=%d, final=%d", initialCount, finalCount)
+	}
+}
+
+func TestMigrateListTranslationSettingFromPreviousVersion(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "upgrade.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open pre-upgrade database: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+		);
+	`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+
+	entries, err := migrationFiles.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	for _, entry := range entries {
+		version, err := extractVersion(entry.Name())
+		if err != nil {
+			t.Fatalf("parse migration version: %v", err)
+		}
+		if version >= 13 {
+			continue
+		}
+		content, err := migrationFiles.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatalf("read migration %s: %v", entry.Name(), err)
+		}
+		if _, err := db.Exec(string(content)); err != nil {
+			t.Fatalf("apply migration %s: %v", entry.Name(), err)
+		}
+		if _, err := db.Exec(
+			"INSERT INTO schema_migrations (version) VALUES (:version)",
+			sql.Named("version", version),
+		); err != nil {
+			t.Fatalf("record migration %s: %v", entry.Name(), err)
+		}
+	}
+
+	if _, err := db.Exec(`INSERT INTO settings (id, locale) VALUES (1, 'de')`); err != nil {
+		t.Fatalf("seed pre-upgrade settings: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close pre-upgrade database: %v", err)
+	}
+
+	store, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() failed while upgrading: %v", err)
+	}
+	defer closeStore(t, store)
+
+	var columnCount int
+	if err := store.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('settings')
+		WHERE name = 'list_translation_mode'
+	`).Scan(&columnCount); err != nil {
+		t.Fatalf("query settings columns: %v", err)
+	}
+	if columnCount != 1 {
+		t.Fatalf("expected list_translation_mode column after upgrade, got %d", columnCount)
+	}
+
+	settings, err := store.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings() after upgrade: %v", err)
+	}
+	if settings.Locale == nil || *settings.Locale != "de" {
+		t.Fatalf("expected existing locale to survive upgrade, got %+v", settings)
+	}
+	if settings.ListTranslationMode != nil {
+		t.Fatalf("expected list_translation_mode to remain unset, got %+v", settings)
 	}
 }
 

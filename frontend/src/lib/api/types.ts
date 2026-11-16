@@ -65,6 +65,7 @@ export interface Bookmark {
 }
 
 export type TranslationMode = "zh" | "bilingual";
+export type ListTranslationMode = "original" | TranslationMode;
 
 // User preferences synced via the backend. A null field means the user has
 // never explicitly chosen a value; clients fall back to their own defaults.
@@ -81,6 +82,7 @@ export interface Settings {
   translation_api_key_mask: string;
   translation_model: string | null;
   translation_mode: TranslationMode | null;
+  list_translation_mode: ListTranslationMode | null;
   updated_at: number;
 }
 
@@ -99,6 +101,7 @@ export interface UpdateSettingsRequest {
   translation_api_key?: string;
   translation_model?: string;
   translation_mode?: TranslationMode;
+  list_translation_mode?: ListTranslationMode;
 }
 
 export interface TranslationBlockInput {
@@ -110,6 +113,35 @@ export interface TranslateArticleRequest {
   title: string;
   blocks: TranslationBlockInput[];
   force?: boolean;
+}
+
+export interface ListTranslationItemRequest {
+  item_id: number;
+  title?: string;
+  summary?: string;
+}
+
+export interface TranslateListItemsRequest {
+  items: ListTranslationItemRequest[];
+  force?: boolean;
+}
+
+export interface ListTranslationItemResponse {
+  item_id: number;
+  translated_title?: string;
+  translated_summary?: string;
+  cached: boolean;
+}
+
+export interface ListTranslationMeta {
+  model: string;
+  total: number;
+}
+
+export interface ListTranslationDone {
+  model: string;
+  translated: number;
+  cached: number;
 }
 
 export interface TranslationLookupResponse {

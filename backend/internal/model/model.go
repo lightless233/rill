@@ -86,6 +86,7 @@ type Settings struct {
 	TranslationAPIKeyMask string  `json:"translation_api_key_mask"`
 	TranslationModel      *string `json:"translation_model"`
 	TranslationMode       *string `json:"translation_mode"`
+	ListTranslationMode   *string `json:"list_translation_mode"`
 	UpdatedAt             int64   `json:"updated_at"`
 }
 

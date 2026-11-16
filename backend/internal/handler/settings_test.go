@@ -24,6 +24,7 @@ type settingsEnvelope struct {
 		TranslationAPIKeyMask string  `json:"translation_api_key_mask"`
 		TranslationModel      *string `json:"translation_model"`
 		TranslationMode       *string `json:"translation_mode"`
+		ListTranslationMode   *string `json:"list_translation_mode"`
 		UpdatedAt             int64   `json:"updated_at"`
 	} `json:"data"`
 }
@@ -68,7 +69,7 @@ func TestGetSettingsEmpty(t *testing.T) {
 	settings := decodeSettings(t, w).Data
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
 		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
-		settings.MonoFont != nil {
+		settings.MonoFont != nil || settings.ListTranslationMode != nil {
 		t.Errorf("expected all-null settings, got %+v", settings)
 	}
 
@@ -77,6 +78,7 @@ func TestGetSettingsEmpty(t *testing.T) {
 	for _, key := range []string{
 		`"locale":null`, `"article_page_size":null`, `"theme":null`, `"auto_mark_read":null`,
 		`"latin_font":null`, `"cjk_font":null`, `"mono_font":null`,
+		`"list_translation_mode":null`,
 	} {
 		if !strings.Contains(w.Body.String(), key) {
 			t.Errorf("expected body to contain %s, got %s", key, w.Body.String())
@@ -185,6 +187,8 @@ func TestUpdateSettingsValidation(t *testing.T) {
 		{"malformed translation url", `{"translation_api_url":"not-a-url"}`, "invalid translation_api_url"},
 		{"invalid translation mode", `{"translation_mode":"en"}`, "invalid translation_mode"},
 		{"empty translation mode", `{"translation_mode":""}`, "invalid translation_mode"},
+		{"invalid list translation mode", `{"list_translation_mode":"en"}`, "invalid list_translation_mode"},
+		{"empty list translation mode", `{"list_translation_mode":""}`, "invalid list_translation_mode"},
 	}
 
 	for _, tt := range tests {
@@ -239,7 +243,7 @@ func TestUpdateSettingsEmptyBody(t *testing.T) {
 	settings := decodeSettings(t, w).Data
 	if settings.Locale != nil || settings.ArticlePageSize != nil || settings.Theme != nil ||
 		settings.AutoMarkRead != nil || settings.LatinFont != nil || settings.CJKFont != nil ||
-		settings.MonoFont != nil {
+		settings.MonoFont != nil || settings.ListTranslationMode != nil {
 		t.Errorf("expected empty PATCH to be a no-op, got %+v", settings)
 	}
 	if settings.UpdatedAt != 0 {
@@ -325,7 +329,7 @@ func TestUpdateSettingsTranslationDoesNotExposeRawKey(t *testing.T) {
 		r,
 		http.MethodPatch,
 		"/api/settings",
-		strings.NewReader(`{"translation_api_url":"https://api.deepseek.com","translation_api_key":"`+secret+`","translation_model":"deepseek-chat","translation_mode":"zh"}`),
+		strings.NewReader(`{"translation_api_url":"https://api.deepseek.com","translation_api_key":"`+secret+`","translation_model":"deepseek-chat","translation_mode":"zh","list_translation_mode":"bilingual"}`),
 		nil,
 		cookie,
 	)
@@ -342,5 +346,8 @@ func TestUpdateSettingsTranslationDoesNotExposeRawKey(t *testing.T) {
 	}
 	if settings.TranslationMode == nil || *settings.TranslationMode != "zh" {
 		t.Fatalf("expected translation_mode=zh, got %+v", settings)
+	}
+	if settings.ListTranslationMode == nil || *settings.ListTranslationMode != "bilingual" {
+		t.Fatalf("expected list_translation_mode=bilingual, got %+v", settings)
 	}
 }

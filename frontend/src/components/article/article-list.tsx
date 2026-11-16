@@ -27,11 +27,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ArticleItem } from "./article-item";
+import { ListTranslationControl } from "./list-translation-control";
 import { ContentHeader } from "@/components/layout/content-header";
 import { SidebarTrigger } from "@/components/layout/sidebar-trigger";
 import { useArticleNavigation } from "@/hooks/use-keyboard";
 import { useUrlState, type ArticleFilter } from "@/hooks/use-url-state";
 import { useArticleList } from "@/hooks/use-article-list";
+import { useListTranslation } from "@/hooks/use-list-translation";
 import {
   buildMarkAllItemsReadPayload,
   useMarkAllItemsRead,
@@ -41,9 +43,11 @@ import {
 import { queryKeys } from "@/queries/keys";
 import { useFeedLookup } from "@/queries/feeds";
 import { useGroups } from "@/queries/groups";
+import { useSettingsQuery } from "@/queries/settings";
 import { useCreateBookmark, useDeleteBookmark } from "@/queries/bookmarks";
 import { getFaviconUrl } from "@/lib/api/favicon";
 import { useI18n } from "@/lib/i18n";
+import { effectiveListTranslationMode } from "@/lib/list-translation";
 import { shouldAutoFetchEmptyPage } from "@/lib/query-status";
 import { toSafeExternalUrl } from "@/lib/safe-url";
 import { cn } from "@/lib/utils";
@@ -56,6 +60,7 @@ import { QueryErrorBanner, QueryErrorState } from "@/components/query-error";
 import {
   articleListKey,
   useArticlePinsStore,
+  usePreferencesStore,
   useReadStatePins,
 } from "@/store";
 import type { Feed, Item } from "@/lib/api";
@@ -122,6 +127,27 @@ export function ArticleList() {
 
   const pinsKey = articleListKey(selectedFeedId, selectedGroupId, articleFilter);
   const clearPins = useArticlePinsStore((s) => s.clearPins);
+
+  const { data: settingsData } = useSettingsQuery();
+  const listTranslationMode = usePreferencesStore(
+    (state) => state.listTranslationMode,
+  );
+  const hasTranslationKey = Boolean(settingsData?.translation_api_key_set);
+  const effectiveTranslationMode = effectiveListTranslationMode(
+    listTranslationMode,
+    hasTranslationKey,
+  );
+  const {
+    translationsByItemId,
+    status: listTranslationStatus,
+    error: listTranslationError,
+    retry: retryListTranslation,
+  } = useListTranslation({
+    articles,
+    mode: effectiveTranslationMode,
+    hasKey: hasTranslationKey,
+    scopeKey: pinsKey,
+  });
 
   // Leaving this exact list (filter/feed/group change or unmount) commits the
   // read markings: pinned rows stop being shown in the unread view. Only the
@@ -486,7 +512,12 @@ export function ArticleList() {
             </TooltipProvider>
           )}
         </div>
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <ListTranslationControl
+            status={listTranslationStatus}
+            error={listTranslationError}
+            onRetry={retryListTranslation}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -615,6 +646,8 @@ export function ArticleList() {
                       feedFaviconUrl={
                         feed ? getFaviconUrl(feed.link, feed.site_url) : null
                       }
+                      translation={translationsByItemId.get(article.id)}
+                      translationMode={effectiveTranslationMode}
                     />
                   );
                 })}

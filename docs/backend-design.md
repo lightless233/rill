@@ -56,7 +56,10 @@ here, it duplicates the migrations and rots.
   (see migrations 001 and 003 for the rationale).
 - `settings` — single row (`id = 1`); nullable preference columns where
   `NULL` means "never explicitly chosen"; validation lives in the handler,
-  not SQL `CHECK`s (rationale in migration 004).
+  not SQL `CHECK`s (rationale in migration 004). The typed single-row shape is
+  deliberate for this small closed preference set; a key-value/JSON settings
+  refactor is a separate decision, not a template for every new feature.
+  `list_translation_mode` is one nullable column added through migration 013.
 
 Legacy compatibility: when an old pre-`schema_migrations` database is
 detected, backend first creates a timestamped `.bak` backup, builds a fresh
@@ -89,6 +92,15 @@ This section only records history.
 - Feed runtime pull fields moved from top-level `feed.*` to nested `feed.fetch_state.*`.
 - Removed top-level fields: `last_build`, `last_failure_at`, `failure`, `failures`.
 - Clients that still decode old fields must update to `fetch_state` before upgrading.
+
+### List translation
+
+`POST /api/translations/items` is a list-only batch translation stream added
+after the per-article translation endpoint. It reuses the existing translation
+configuration, request/batching path and `article_translations` cache; the list
+layer maps title/excerpt fields to existing translation segments and back. It
+does not store translations in `items`, and `done` is the only full-batch
+success marker. See [Spec 002](specs/002-2026-11-16-list-translation.md).
 
 ## 8. Feed pull strategy
 
