@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -58,7 +59,7 @@ func run() error {
 	h.SetEventHub(hub)
 	r := h.SetupRouter()
 
-	addr := ":" + strconv.Itoa(cfg.Port)
+	addr := net.JoinHostPort(cfg.ListenHost, strconv.Itoa(cfg.Port))
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           r,
