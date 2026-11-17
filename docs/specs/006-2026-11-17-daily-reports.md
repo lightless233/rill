@@ -1,6 +1,7 @@
 # 006: Daily feed reading reports
 
-Status: proposed; specification only, implementation not started.
+Status: hold; paused at the user's request. Implementation has not started.
+Do not resume work until the user explicitly requests it.
 
 ## Goal and confirmed scope
 

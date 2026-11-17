@@ -1,6 +1,7 @@
 # 006: Daily reports implementation plan
 
-Status: planning only; do not start implementation.
+Status: hold; paused with Spec 006 at the user's request.
+Do not resume planning or implementation until the user explicitly requests it.
 
 Contract: [Spec 006](../specs/006-2026-11-17-daily-reports.md).
 
