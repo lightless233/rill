@@ -271,6 +271,8 @@ export const ruMessages: PartialMessages = {
   "article.list.markAllDialog.description": "Все непрочитанные статьи в «{scope}» будут отмечены как прочитанные. Продолжить?",
   "article.list.markAllDialog.title": "Отметить все как прочитанные",
   "article.list.markAllRead": "Отметить все как прочитанные",
+  "article.list.nextFeed": "Следующая лента",
+  "article.list.nextGroup": "Следующая группа",
   "article.list.markLoadedRead": "Отметить загруженные как прочитанные",
   "article.list.moreReadActions": "Дополнительные действия отметки прочитанным",
   "article.list.noArticles": "Статьи не найдены",

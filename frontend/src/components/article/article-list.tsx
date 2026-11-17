@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import {
+  CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -52,6 +58,7 @@ import { shouldAutoFetchEmptyPage } from "@/lib/query-status";
 import { toSafeExternalUrl } from "@/lib/safe-url";
 import { cn } from "@/lib/utils";
 import {
+  canAdvanceFromReadScope,
   getScopeUnreadCount,
   resolveNextUnreadTarget,
   type UnreadNavigationTarget,
@@ -103,7 +110,7 @@ export function ArticleList() {
     articleFilter,
   });
 
-  const { data: groups = [] } = useGroups();
+  const { data: groups = [], isSuccess: isGroupsSuccess } = useGroups();
   const {
     feeds,
     getFeedById,
@@ -215,6 +222,10 @@ export function ArticleList() {
 
   const selectedFeed =
     selectedFeedId !== null ? getFeedById(selectedFeedId) : undefined;
+  const selectedGroup =
+    selectedGroupId !== null
+      ? groups.find((group) => group.id === selectedGroupId)
+      : undefined;
   const safeFeedSiteUrl = selectedFeed
     ? toSafeExternalUrl(selectedFeed.site_url)
     : null;
@@ -225,8 +236,7 @@ export function ArticleList() {
     title = selectedFeed?.name ?? t("article.feedFallback");
     scopeUnreadCount = selectedFeed?.unread_count ?? 0;
   } else if (selectedGroupId !== null) {
-    const group = groups.find((g) => g.id === selectedGroupId);
-    title = group?.name ?? t("article.groupFallback");
+    title = selectedGroup?.name ?? t("article.groupFallback");
     scopeUnreadCount = feeds.reduce(
       (sum, f) => (f.group_id === selectedGroupId ? sum + f.unread_count : sum),
       0,
@@ -236,6 +246,18 @@ export function ArticleList() {
   const unreadCount = articles.filter((a) => a.unread).length;
   const isMarkingRead = markItemsRead.isPending || markAllItemsRead.isPending;
   const canMarkAllRead = scopeUnreadCount > 0 || unreadCount > 0;
+  const canAdvance = canAdvanceFromReadScope({
+    articleFilter,
+    selectedFeedId,
+    selectedGroupId,
+    feedsReady: isFeedsSuccess,
+    groupsReady: isGroupsSuccess,
+    selectedFeedExists: selectedFeed !== undefined,
+    selectedGroupExists: selectedGroup !== undefined,
+    scopeUnreadCount,
+    loadedUnreadCount: unreadCount,
+  });
+  const canUsePrimaryAction = canMarkAllRead || canAdvance;
   const hasArticleError = isError || isFetchNextPageError;
   const hasNoFeeds = !isFeedsLoading && !isFeedsError && feeds.length === 0;
 
@@ -495,6 +517,23 @@ export function ArticleList() {
   };
 
   const handleMarkAllButtonClick = () => {
+    if (canAdvance) {
+      const nextTarget = resolveNextUnreadTarget({
+        groups,
+        beforeFeeds: feeds,
+        afterFeeds: feeds,
+        isFeedsSuccess,
+        isFeedsError,
+        selectedFeedId,
+        selectedGroupId,
+        articleFilter,
+      });
+      if (nextTarget) {
+        applyTargetNavigation(nextTarget);
+      }
+      return;
+    }
+
     if (selectedFeedId === null && selectedGroupId === null) {
       setMarkAllConfirmOpen(true);
       return;
@@ -545,11 +584,22 @@ export function ArticleList() {
             variant="outline"
             size="sm"
             onClick={handleMarkAllButtonClick}
-            disabled={!canMarkAllRead || isMarkingRead}
+            disabled={!canUsePrimaryAction || isMarkingRead}
             className="gap-1.5 rounded-r-none text-xs focus-visible:z-10"
           >
-            <CheckCheck className="h-4 w-4" />
-            {t("article.list.markAllRead")}
+            {canAdvance ? (
+              <>
+                <ChevronRight className="h-4 w-4" />
+                {selectedFeedId !== null
+                  ? t("article.list.nextFeed")
+                  : t("article.list.nextGroup")}
+              </>
+            ) : (
+              <>
+                <CheckCheck className="h-4 w-4" />
+                {t("article.list.markAllRead")}
+              </>
+            )}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger

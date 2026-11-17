@@ -271,6 +271,8 @@ export const esMessages: PartialMessages = {
   "article.list.markAllDialog.description": 'Esto marcará como leídos todos los artículos no leídos de "{scope}". ¿Continuar?',
   "article.list.markAllDialog.title": "Marcar todo como leído",
   "article.list.markAllRead": "Marcar todo como leido",
+  "article.list.nextFeed": "Siguiente feed",
+  "article.list.nextGroup": "Siguiente grupo",
   "article.list.markLoadedRead": "Marcar cargados como leídos",
   "article.list.moreReadActions": "Más acciones para marcar como leído",
   "article.list.noArticles": "No se encontraron articulos",

@@ -271,6 +271,8 @@ export const deMessages: PartialMessages = {
   "article.list.markAllDialog.description": "Alle ungelesenen Artikel in \"{scope}\" werden als gelesen markiert. Fortfahren?",
   "article.list.markAllDialog.title": "Alle als gelesen markieren",
   "article.list.markAllRead": "Alle als gelesen markieren",
+  "article.list.nextFeed": "Nächster Feed",
+  "article.list.nextGroup": "Nächste Gruppe",
   "article.list.markLoadedRead": "Geladene als gelesen markieren",
   "article.list.moreReadActions": "Weitere Aktionen zum Als-gelesen-Markieren",
   "article.list.noArticles": "Keine Artikel gefunden",

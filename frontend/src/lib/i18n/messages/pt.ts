@@ -271,6 +271,8 @@ export const ptMessages: PartialMessages = {
   "article.list.markAllDialog.description": 'Isso marcará todos os artigos não lidos em "{scope}" como lidos. Continuar?',
   "article.list.markAllDialog.title": "Marcar todos como lidos",
   "article.list.markAllRead": "Marcar todos como lidos",
+  "article.list.nextFeed": "Feed seguinte",
+  "article.list.nextGroup": "Grupo seguinte",
   "article.list.markLoadedRead": "Marcar carregados como lidos",
   "article.list.moreReadActions": "Mais ações para marcar como lido",
   "article.list.noArticles": "Nenhum artigo encontrado",

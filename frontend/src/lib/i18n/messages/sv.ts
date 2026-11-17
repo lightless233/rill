@@ -271,6 +271,8 @@ export const svMessages: PartialMessages = {
   "article.list.markAllDialog.description": 'Alla olästa artiklar i "{scope}" kommer att markeras som lästa. Fortsätta?',
   "article.list.markAllDialog.title": "Markera alla som lästa",
   "article.list.markAllRead": "Markera alla som lasta",
+  "article.list.nextFeed": "Nästa flöde",
+  "article.list.nextGroup": "Nästa grupp",
   "article.list.markLoadedRead": "Markera laddade som lästa",
   "article.list.moreReadActions": "Fler åtgärder för att markera som läst",
   "article.list.noArticles": "Inga artiklar hittades",

@@ -271,6 +271,8 @@ export const zhMessages: PartialMessages = {
   "article.list.markAllDialog.description": "将把「{scope}」中的全部未读文章标记为已读，是否继续？",
   "article.list.markAllDialog.title": "将全部标记为已读",
   "article.list.markAllRead": "将全部标记为已读",
+  "article.list.nextFeed": "下一个订阅",
+  "article.list.nextGroup": "下一个分组",
   "article.list.markLoadedRead": "将已加载标为已读",
   "article.list.moreReadActions": "更多标记已读操作",
   "article.list.noArticles": "未找到文章",

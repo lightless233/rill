@@ -270,6 +270,8 @@ export const enMessages = {
   "article.list.markAllDialog.description": 'This will mark all unread articles in "{scope}" as read. Continue?',
   "article.list.markAllDialog.title": "Mark All as Read",
   "article.list.markAllRead": "Mark all as read",
+  "article.list.nextFeed": "Next feed",
+  "article.list.nextGroup": "Next group",
   "article.list.markLoadedRead": "Mark loaded as read",
   "article.list.moreReadActions": "More mark-as-read actions",
   "article.list.noArticles": "No articles found",

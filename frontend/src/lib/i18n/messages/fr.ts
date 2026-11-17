@@ -271,6 +271,8 @@ export const frMessages: PartialMessages = {
   "article.list.markAllDialog.description": "Tous les articles non lus de « {scope} » seront marqués comme lus. Continuer ?",
   "article.list.markAllDialog.title": "Tout marquer comme lu",
   "article.list.markAllRead": "Tout marquer comme lu",
+  "article.list.nextFeed": "Flux suivant",
+  "article.list.nextGroup": "Groupe suivant",
   "article.list.markLoadedRead": "Marquer les chargés comme lus",
   "article.list.moreReadActions": "Plus d'actions de marquage comme lu",
   "article.list.noArticles": "Aucun article trouvé",

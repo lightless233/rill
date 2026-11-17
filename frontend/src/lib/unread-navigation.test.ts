@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Feed, Group } from "@/lib/api";
 import {
+  canAdvanceFromReadScope,
   getScopeUnreadCount,
   resolveNextUnreadTarget,
 } from "./unread-navigation";
@@ -82,6 +83,24 @@ describe("resolveNextUnreadTarget", () => {
         articleFilter: "unread",
       }),
     ).toBeNull();
+  });
+
+  it("advances from an already-zero feed scope", () => {
+    const groups = [makeGroup(1), makeGroup(2)];
+    const feeds = [makeFeed(10, 1, 0), makeFeed(20, 2, 3)];
+
+    expect(
+      resolveNextUnreadTarget({
+        groups,
+        beforeFeeds: feeds,
+        afterFeeds: feeds,
+        isFeedsSuccess: true,
+        isFeedsError: false,
+        selectedFeedId: 10,
+        selectedGroupId: null,
+        articleFilter: "unread",
+      }),
+    ).toEqual({ kind: "feed", feedId: 20 });
   });
 
   it("advances to the next unread feed using pre-clear sidebar order", () => {
@@ -179,6 +198,24 @@ describe("resolveNextUnreadTarget", () => {
     ).toEqual({ kind: "all" });
   });
 
+  it("advances from an already-zero group scope", () => {
+    const groups = [makeGroup(1), makeGroup(2)];
+    const feeds = [makeFeed(10, 1, 0), makeFeed(20, 2, 4)];
+
+    expect(
+      resolveNextUnreadTarget({
+        groups,
+        beforeFeeds: feeds,
+        afterFeeds: feeds,
+        isFeedsSuccess: true,
+        isFeedsError: false,
+        selectedFeedId: null,
+        selectedGroupId: 1,
+        articleFilter: "unread",
+      }),
+    ).toEqual({ kind: "group", groupId: 2 });
+  });
+
   it("advances folder-to-folder directly, wrapping around, then landing on ALL", () => {
     const groups = [makeGroup(1), makeGroup(2), makeGroup(3)];
     const beforeFeeds = [
@@ -228,6 +265,62 @@ describe("resolveNextUnreadTarget", () => {
         articleFilter: "unread",
       }),
     ).toEqual({ kind: "all" });
+  });
+});
+
+describe("canAdvanceFromReadScope", () => {
+  const base = {
+    articleFilter: "unread" as const,
+    selectedFeedId: 10,
+    selectedGroupId: null,
+    feedsReady: true,
+    groupsReady: true,
+    selectedFeedExists: true,
+    selectedGroupExists: false,
+    scopeUnreadCount: 0,
+    loadedUnreadCount: 0,
+  };
+
+  it("enables navigation only for an existing scoped unread scope at zero", () => {
+    expect(canAdvanceFromReadScope(base)).toBe(true);
+    expect(
+      canAdvanceFromReadScope({
+        ...base,
+        selectedFeedId: null,
+        selectedGroupId: 1,
+        selectedFeedExists: false,
+        selectedGroupExists: true,
+      }),
+    ).toBe(true);
+    expect(canAdvanceFromReadScope({ ...base, articleFilter: "all" })).toBe(
+      false,
+    );
+    expect(canAdvanceFromReadScope({ ...base, articleFilter: "starred" })).toBe(
+      false,
+    );
+    expect(
+      canAdvanceFromReadScope({
+        ...base,
+        selectedFeedId: null,
+        selectedGroupId: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects pending/failed metadata, missing scopes, and remaining unread articles", () => {
+    expect(canAdvanceFromReadScope({ ...base, feedsReady: false })).toBe(false);
+    expect(canAdvanceFromReadScope({ ...base, groupsReady: false })).toBe(
+      false,
+    );
+    expect(
+      canAdvanceFromReadScope({ ...base, selectedFeedExists: false }),
+    ).toBe(false);
+    expect(
+      canAdvanceFromReadScope({ ...base, scopeUnreadCount: 1 }),
+    ).toBe(false);
+    expect(
+      canAdvanceFromReadScope({ ...base, loadedUnreadCount: 1 }),
+    ).toBe(false);
   });
 });
 

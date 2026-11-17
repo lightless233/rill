@@ -39,6 +39,54 @@ export function getScopeUnreadCount(
   return feeds.reduce((sum, f) => sum + (f.unread_count || 0), 0);
 }
 
+export interface CanAdvanceFromReadScopeInput {
+  articleFilter: ArticleFilter;
+  selectedFeedId: number | null;
+  selectedGroupId: number | null;
+  feedsReady: boolean;
+  groupsReady: boolean;
+  selectedFeedExists: boolean;
+  selectedGroupExists: boolean;
+  scopeUnreadCount: number;
+  loadedUnreadCount: number;
+}
+
+/**
+ * True when the header's zero-unread action can navigate to the next unread
+ * scope. Metadata failures and missing selected scopes are not evidence of an
+ * empty scope, so they never enable navigation.
+ */
+export function canAdvanceFromReadScope({
+  articleFilter,
+  selectedFeedId,
+  selectedGroupId,
+  feedsReady,
+  groupsReady,
+  selectedFeedExists,
+  selectedGroupExists,
+  scopeUnreadCount,
+  loadedUnreadCount,
+}: CanAdvanceFromReadScopeInput): boolean {
+  if (
+    articleFilter !== "unread" ||
+    (selectedFeedId === null && selectedGroupId === null) ||
+    !feedsReady ||
+    !groupsReady ||
+    scopeUnreadCount !== 0 ||
+    loadedUnreadCount !== 0
+  ) {
+    return false;
+  }
+
+  if (selectedFeedId !== null && !selectedFeedExists) {
+    return false;
+  }
+  if (selectedGroupId !== null && !selectedGroupExists) {
+    return false;
+  }
+  return true;
+}
+
 function getVisibleGroups(
   groups: Group[],
   feeds: Feed[],
