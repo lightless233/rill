@@ -12,8 +12,10 @@ The user confirmed:
 
 - Use Asia/Shanghai. Start generation at 08:00; completion by 08:00 is not a
   requirement.
-- Cover the previous calendar day, from 00:00 inclusive to the following 00:00
-  exclusive. Label the report with the day covered, not the generation day.
+- Cover yesterday at 08:00 inclusive through today at 08:00 exclusive. Label
+  the report with the window's start date and display the full coverage period.
+  For example, the report dated 2026-11-17 starts generating on 2026-11-18 at
+  08:00 and covers 2026-11-17 08:00 through 2026-11-18 08:00, Asia/Shanghai.
 - Add a separate Daily reports sidebar entry, followed by a dated report list
   and a report detail page.
 - Reports use article-style reading and sharing. They do not enter ordinary
@@ -27,13 +29,13 @@ or deployment.
 ## Article selection and report quality
 
 - "New" means an RSS/Atom article first inserted into Rill during the covered
-  day, determined by its stored creation timestamp, not the publisher's date.
+  window, determined by its stored creation timestamp, not the publisher's date.
   Read and unread articles are both included. A late-fetched article belongs
-  to its ingestion day even if its publication date is older.
+  to its ingestion window even if its publication date is older.
 - Use all available subscription articles in the window, rather than the
   current page, only unread articles, or an arbitrary first-N subset. RSS
   deduplication remains unchanged. Initial imports and newly added feeds may
-  contribute older articles that were first ingested on that day.
+  contribute older articles that were first ingested during that window.
 - Work from stored feed content; do not fetch full websites or external news.
   Each input includes its title, feed name, original URL and a bounded text
   excerpt. Long bodies may be shortened, but whole articles must not disappear
@@ -64,9 +66,10 @@ explicit and bounded:
   existing AI settings; enabling reports requires a configured AI key. This
   keeps an existing AI-enabled development instance from silently starting
   scheduled billable work just because it was upgraded.
-- On enable, record yesterday as the first eligible report date. If today's
-  08:00 has passed, that first report is due immediately; otherwise it becomes
-  due at 08:00. Do not scan all historical articles on first activation.
+- On enable, record yesterday as the first eligible window start/report date.
+  At or after today's 08:00, that window has closed and its report is due
+  immediately; before 08:00, wait until its end boundary at 08:00. Do not
+  generate a partial window or scan all historical articles on first activation.
 - During an enabled period, recover missed due dates after a restart and
   process them serially. Prefer the most recent due report, then older missing
   dates. Disabling stops scheduling new work; an already running attempt may
@@ -139,9 +142,11 @@ explicit and bounded:
 
 ## Acceptance criteria
 
-1. With reports enabled and a fake clock at 08:00 Asia/Shanghai, yesterday's
-   report starts once without a browser. Exact-midnight boundary items enter
-   the correct day regardless of publisher date or unread status.
+1. With reports enabled and a fake clock at 08:00 Asia/Shanghai, the report for
+   yesterday 08:00 through today 08:00 starts once without a browser. Include
+   an item created exactly at the start boundary; exclude one created exactly
+   at the end boundary and include it in the next report. Crossing midnight
+   does not split this window, regardless of publisher date or unread status.
 2. Repeated wakeups and concurrent retry requests do not duplicate a report or
    run multiple AI jobs. Restart catches up eligible dates, respects activation
    boundaries/retry budgets, and does not regenerate ready reports.

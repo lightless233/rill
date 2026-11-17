@@ -39,15 +39,18 @@ parallel AI transport, parsing, sharing, scheduling or UI infrastructure.
 Problem: article creation time is stored, but the current list query is a
 publication-date reader and there is no durable report/job record.
 
-- Add a migration for the report resource, with a unique covered date, period
-  bounds, title/body, state, coverage/source metadata, actual model, timestamps,
-  attempt count and retry timing. Keep source references as report-owned
+- Add a migration for the report resource, with a unique window start/report
+  date, period bounds, title/body, state, coverage/source metadata, actual model,
+  timestamps, attempt count and retry timing. Keep source references as report-owned
   snapshots rather than cascading foreign keys to live articles. Do not store
   AI keys in report records.
 - Add the persistent enable switch and activation boundary through the existing
   settings path. Expose only user-relevant settings; internal scheduler progress
   is not another user preference. Preserve ready reports across disable/enable.
 - Add a dedicated creation-time window query and appropriate timestamp index.
+  A report dated D covers `[D 08:00, D+1 08:00)` in Asia/Shanghai and becomes due
+  at its end boundary. Convert those bounds to stored Unix timestamps for the
+  query; do not split selection at midnight.
   Do not overload `ListItemsParams.BeforePubDate`, remove its existing page cap,
   or use the first page of the public item API to assemble a report.
 - Select a stable source manifest for an attempt, then load/process bodies in
@@ -59,9 +62,10 @@ publication-date reader and there is no durable report/job record.
   Never keep a database transaction open around AI calls. Match the existing
   named-SQL-parameter and migration conventions.
 
-Evidence: midnight selection boundaries, read/unread independence, creation
-versus publication dates, stable date ordering, uniqueness/claim behavior,
-activation periods and state persistence are covered by focused store tests.
+Evidence: inclusive/exclusive 08:00 selection boundaries, articles on both sides
+of midnight, read/unread independence, creation versus publication dates, stable
+report date ordering, uniqueness/claim behavior, activation periods and state
+persistence are covered by focused store tests.
 
 ## T2 — Add grounded multi-source report synthesis
 
@@ -109,7 +113,9 @@ Depends on T1/T2.
 - Add one small report worker managed by the same `errgroup` and shutdown
   context as the HTTP server and puller. It owns automatic and manual jobs;
   retry handlers wake it instead of launching independent request goroutines.
-- Calculate calendar boundaries and the next 08:00 in Asia/Shanghai. Ensure
+- Calculate consecutive 08:00 window boundaries and the next generation time
+  in Asia/Shanghai. A report becomes due only when its window has closed; keep
+  the start date as its stable identity for startup catch-up and retries. Ensure
   timezone data is available in the shipped binary/container: the current
   [Dockerfile](../../Dockerfile) does not install timezone data. Standard
   `time/tzdata` embedding avoids reliance on the development host's zone files.
@@ -125,10 +131,11 @@ Depends on T1/T2.
   Do not swallow worker failures as empty successful reports or crash the
   reader merely because an AI provider is unavailable.
 
-Evidence: deterministic clock/scheduler tests cover before/at/after 08:00,
-midnight, repeated wakeups, missed days, off periods, retry exhaustion and
-shutdown without waiting real hours. Exercise zone loading in the container
-build once; no system cron or new daemon is introduced.
+Evidence: deterministic clock/scheduler tests cover enabling before/at/after
+08:00 without generating partial windows, crossing midnight without an extra
+report, repeated wakeups, missed days, off periods, retry exhaustion and shutdown
+without waiting real hours. Exercise zone loading in the container build once;
+no system cron or new daemon is introduced.
 
 ## T4 — Expose authenticated report reads/retries and extend sharing
 
@@ -165,6 +172,8 @@ Depends on T4.
   with route-aware selection and the existing mobile sidebar behavior. Do not
   tie its availability to feeds/groups loading or add it as another RSS filter.
 - Implement authenticated report list and date-based detail routes in AppLayout.
+  Show the full 08:00-to-08:00 coverage period alongside the report's start date
+  so the date label cannot be mistaken for a midnight-to-midnight report.
   Reuse existing list/query/error/loading/pagination patterns and article styles.
   The report body is read-only article content with source links and sharing;
   it is not an Item with fabricated IDs or unsupported read/star controls.
