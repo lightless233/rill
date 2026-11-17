@@ -31,8 +31,8 @@ Reuse these existing paths:
   ContentHeader, query error components, typography and
   [processArticleContent](../../frontend/src/lib/content.ts) for reading UI.
 
-Only report-specific selection, synthesis and job state are new. Do not add
-parallel AI transport, parsing, sharing, scheduling or UI infrastructure.
+Only report-specific editorial screening, synthesis and job state are new.
+Do not add parallel AI transport, parsing, sharing, scheduling or UI infrastructure.
 
 ## T1 — Persist reports, selection windows and activation state
 
@@ -40,10 +40,10 @@ Problem: article creation time is stored, but the current list query is a
 publication-date reader and there is no durable report/job record.
 
 - Add a migration for the report resource, with a unique window start/report
-  date, period bounds, title/body, state, coverage/source metadata, actual model,
-  timestamps, attempt count and retry timing. Keep source references as report-owned
-  snapshots rather than cascading foreign keys to live articles. Do not store
-  AI keys in report records.
+  date, period bounds, title/body, state, candidate/selected counts and cited
+  source metadata, actual model, timestamps, attempt count and retry timing.
+  Keep source references as report-owned snapshots rather than cascading
+  foreign keys to live articles. Do not store AI keys in report records.
 - Add the persistent enable switch and activation boundary through the existing
   settings path. Expose only user-relevant settings; internal scheduler progress
   is not another user preference. Preserve ready reports across disable/enable.
@@ -53,11 +53,12 @@ publication-date reader and there is no durable report/job record.
   query; do not split selection at midnight.
   Do not overload `ListItemsParams.BeforePubDate`, remove its existing page cap,
   or use the first page of the public item API to assemble a report.
-- Select a stable source manifest for an attempt, then load/process bodies in
-  bounded batches. Keep only bounded text excerpts/notes in memory, not every
-  full HTML body. A source disappearing after selection must be accounted for
-  explicitly rather than silently claimed as covered. Ready reports retain
-  their own text and source appendix after source deletion.
+- Select a stable candidate manifest for an attempt, then load lightweight
+  excerpts for screening in bounded batches. Load richer bounded content only
+  for shortlisted material when needed. Do not retain every full HTML body or
+  generate a persistent summary per candidate. A disappearing source must not
+  be claimed as processed. Ready reports retain their own text and only their
+  actually cited sources after source deletion.
 - Persist short state transitions transactionally and claim jobs conditionally.
   Never keep a database transaction open around AI calls. Match the existing
   named-SQL-parameter and migration conventions.
@@ -80,31 +81,42 @@ Depends on T1.
   retain paragraph boundaries, and preserve source IDs alongside text.
 - Use bounded per-article excerpts and per-request input/output budgets. Start
   with conservative budgets comparable to the current article-summary input
-  limit, defined near the report logic. Pack every manifest entry into a batch;
-  batch note reduction must also remain bounded for large days. Keep generation
-  serial to control memory, upstream concurrency and rate-limit pressure.
-- Use report-specific prompts for topical grouping, cross-source interpretation
-  and citations. Collect structured output with the standard JSON decoder;
+  limit, defined near the report logic. Screen all candidate batches with
+  titles, sources and brief excerpts, retaining only valuable leads and facts;
+  do not invoke `SummarizeArticle` for each candidate or require an output note
+  for every input. Synthesize and reduce only the shortlisted material, allowing
+  further editorial cuts. Keep generation serial to control memory, upstream
+  concurrency and rate-limit pressure.
+- Use report-specific prompts for significance/information-value screening,
+  duplicate-story consolidation, topical grouping, cross-source interpretation
+  and citations. No per-feed quotas, mandatory article counts, persistent feed
+  reputation system or new user ranking settings are needed. Collect structured
+  output with the standard JSON decoder;
   validate usable sections and references against the supplied source IDs.
-  Empty/malformed output, unsupported source IDs, truncated streams and failed
-  batches cannot produce a ready report.
+  malformed output, unsupported source IDs, truncated streams and failed
+  batches cannot produce a ready report. An explicit successful zero-selection
+  result is valid; an empty or broken model response is not that result.
 - Render the structured report into escaped HTML with Go's standard templating
   tools, using only application-owned layout and source URLs. Do not write a
   second Markdown engine: the current concise summary renderer does not support
   citation links, while the article/public readers already accept sanitized HTML.
-- Preserve the distinction between submitted article coverage and final report
-  mentions. Snapshot actual coverage counts and source links; omit unsupported
-  historical comparisons or claims of external verification.
+- Count all eligible candidates separately from unique articles actually cited
+  in the final report. Build the appendix from final references only, not every
+  candidate or intermediate shortlist. Omit unsupported historical comparisons
+  and claims of external verification.
 - For nonempty work, read the latest existing AI settings at attempt start.
-  Zero-input completion does not require an AI request or currently configured
-  key. Keep report output separate from the single-article summary cache; do
-  not force unrelated cache formats to share keys or rerun summaries for every
-  article by default.
+  Zero-input completion needs no AI request or currently configured key. If
+  screening succeeds with no worthwhile leads, persist a concise ready report
+  with zero selections and skip further synthesis. Keep report output separate
+  from the single-article summary cache; do not force unrelated cache formats to
+  share keys or rerun summaries for every article by default.
 
-Evidence: a controlled AI server exercises multiple input/reduction batches,
-coverage, unsupported citations, safe HTML, upstream errors and partial output.
-Zero-input completion makes no AI request. Existing summary/translation tests
-remain valid for the shared transport after any focused refactor.
+Evidence: a controlled AI server exercises multiple screening/reduction batches,
+important candidates beyond the first batch, omitted low-value feeds/articles,
+duplicate consolidation, final-source-only citations, safe HTML, upstream errors
+and partial output. Verify no-input and successful zero-selection results remain
+distinct from failure. Existing summary/translation tests remain valid for the
+shared transport after any focused refactor.
 
 ## T3 — Schedule and recover daily work inside the process
 
@@ -204,8 +216,9 @@ integrated change is ready, expanding only for affected failures.
 
 Structural tests cannot establish report writing quality. After correctness,
 use one small explicitly authorized real-model sample to assess Chinese prose,
-deduplication, supported analysis and citations, and record its actual input
-volume/request count. Do not present a stubbed response as AI-quality evidence
+editorial focus, omission of low-value material, deduplication, supported analysis
+and citations, and record its actual input volume/request count. Do not present
+a stubbed response as AI-quality evidence
 or promise a fixed cost based on the model name alone.
 
 Stop after delivering these design documents. Implementation, live model calls,
