@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  if [ "$local_ref" = "(delete)" ]; then
+    continue
+  fi
+
+  local_commit=$(git rev-parse --verify "${local_oid}^{commit}")
+  set -- --branch "$local_commit"
+  if git cat-file -e "${remote_oid}^{commit}" 2>/dev/null; then
+    set -- "$@" --since-commit "$remote_oid"
+  fi
+
+  echo "Scanning commits for ${remote_ref} before push..." >&2
+  python3 "$root/scripts/scan_secrets.py" "$@" </dev/null
+done

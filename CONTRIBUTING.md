@@ -32,6 +32,29 @@ cd frontend && pnpm install
 
 Backend uses Go modules and installs dependencies automatically via `go` tooling.
 
+### Secret scanning before push
+
+Install the official [TruffleHog binary](https://github.com/trufflesecurity/trufflehog#-installation)
+on your PATH, then enable this repository's hook from the repository root:
+
+```shell
+git config --local core.hooksPath .githooks
+```
+
+The pre-push hook checks the outgoing commit range. New refs or an unavailable
+remote base require scanning the pushed ref's full history. Findings or scan
+errors block the push. Scans run locally without online credential verification
+and print only detector names and Git locations, never credential values.
+Review findings before pushing; do not bypass the hook to publish a real secret.
+
+To scan all locally reachable Git history manually:
+
+```shell
+python3 scripts/scan_secrets.py
+```
+
+The scanner reads committed Git objects, not the working tree or staged changes.
+
 ## 3. Validation checklist (for local changes)
 
 ### Backend
