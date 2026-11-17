@@ -26,10 +26,10 @@ import (
 )
 
 func main() {
-	showVersion := flag.Bool("version", false, "Print version and commit, then exit")
+	showVersion := flag.Bool("version", false, "Print version, then exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("Rill %s (%s)\n", buildinfo.Version, buildinfo.Commit)
+		fmt.Printf("Rill %s\n", buildinfo.Version)
 		return
 	}
 

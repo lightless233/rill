@@ -103,8 +103,10 @@ tagged, clean checkout with the existing scripts, then push the branch and the
 specific tag when authorized. GitHub Releases, container images, and production
 deployments are published manually.
 
-[scripts/version.sh](scripts/version.sh) resolves the tag/commit identity and
-marks tracked local modifications as dirty. [scripts.sh](scripts.sh) injects it
+[scripts/version.sh](scripts/version.sh) formats the build identity as
+`YYYYMMDD-shortHash-version`, using the commit date and the nearest release tag
+without its `v` prefix. Tracked local modifications append `-dirty`.
+[scripts.sh](scripts.sh) injects it
 into the backend. The binary's `--version`, startup log and
 [application-info handler](backend/internal/handler/feed.go) expose the same
 identity; the About screen reads it from the running server.

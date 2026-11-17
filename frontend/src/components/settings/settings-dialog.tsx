@@ -929,7 +929,7 @@ function AboutContent() {
               {t("common.retry")}
             </Button>
           ) : appInfo.data ? (
-            `${appInfo.data.version} · ${appInfo.data.commit}`
+            appInfo.data.version
           ) : (
             "…"
           )}
