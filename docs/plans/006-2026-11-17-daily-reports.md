@@ -41,12 +41,15 @@ publication-date reader and there is no durable report/job record.
 
 - Add a migration for the report resource, with a unique window start/report
   date, period bounds, title/body, state, candidate/selected counts and cited
-  source metadata, actual model, timestamps, attempt count and retry timing.
+  source metadata, actual model, timestamps, attempt count and internal retry
+  timing.
   Keep source references as report-owned snapshots rather than cascading
   foreign keys to live articles. Do not store AI keys in report records.
-- Add the persistent enable switch through the existing settings path.
-  Do not add a first-eligible date, backfill cursor or missed-date inventory.
-  Preserve ready reports across disable/enable.
+- Add the persistent enable switch through the existing settings path. Validate
+  enabling server-side against the shared translation LLM key; UI guidance
+  alone is not sufficient. Do not add a separate AI configuration, a
+  first-eligible date, backfill cursor or missed-date inventory. Preserve ready
+  reports across disable/enable.
 - Add a dedicated creation-time window query and appropriate timestamp index.
   A report dated D covers `[D 08:00, D+1 08:00)` in Asia/Shanghai and becomes due
   at its end boundary. Convert those bounds to stored Unix timestamps for the
@@ -140,9 +143,14 @@ Depends on T1/T2.
   to handle the scheduled timer, settings changes and explicit manual retries.
   Do not scan historical dates, build a generic scheduler or combine report
   timing with per-feed refresh intervals.
+- Read the shared translation LLM configuration when the worker starts and
+  before an automatic attempt; do not reuse a stale key decision. A missing key
+  for nonempty work is a failure, not an empty report.
 - Preserve one active job, ready-record immutability and the Spec's limited
   same-process automatic failure retry. Missed scheduled runs are skipped, not
-  queued. There is no backlog priority or catch-up loop.
+  queued. Disabling stops new due dates, but already persisted pending/running
+  jobs may finish in the same process run. There is no backlog priority or
+  catch-up loop.
 - On startup mark unfinished jobs failed/interrupted without resuming work or
   replaying their automatic retry timers. Only explicit manual retry can restart
   them. On cancellation, stop timers and model requests and retain that state.
@@ -152,8 +160,9 @@ Depends on T1/T2.
 Evidence: deterministic clock/scheduler tests cover enabling before/at/after
 08:00 without generating partial windows, crossing midnight without an extra
 report, repeated wakeups, and restarts after both a short outage and a long
-outage without any historical AI requests. Cover disabled periods, interrupted
-jobs requiring manual retry, the same-process retry limit and shutdown without
+outage without any historical AI requests. Cover disabling both before a run is
+persisted and with already persisted pending/running work, interrupted jobs
+requiring manual retry, the same-process retry limit and shutdown without
 waiting real hours. Exercise zone loading in the container build once; no system
 cron or new daemon is introduced.
 
@@ -197,12 +206,18 @@ Depends on T4.
   Reuse existing list/query/error/loading/pagination patterns and article styles.
   The report body is read-only article content with source links and sharing;
   it is not an Item with fabricated IDs or unsupported read/star controls.
-- Put the enable switch in the existing AI settings area and reuse its missing
-  key guidance. Do not add another provider form or model selector. Settings
-  saves wake the worker; failed saves preserve the previous scheduling state.
+- Put the enable switch in the existing AI settings area and reuse the shared
+  translation LLM configuration and missing-key guidance. Do not add another
+  provider form or model selector. The settings update path rejects enabling
+  when the shared AI key is not configured (400); do not rely on the UI switch
+  alone. Record that rejection in the API conventions when implemented.
+  Settings saves wake the worker; failed saves preserve the previous scheduling
+  state.
 - Refetch report queries while visible pending/running jobs need status updates;
-  stop polling on terminal states and use entry/focus refresh for completed
-  background work. Do not extend the feed-count SSE protocol for this feature.
+  stop polling on terminal states, including failed. Do not add a next-retry
+  field or keep polling through the automatic retry delay; entry/focus refresh
+  picks up a later automatic retry result. Do not extend the feed-count SSE
+  protocol for this feature.
 - Reuse QueryErrorState/Banner, Button, Switch, ShareDialog, content sanitizer,
   fonts and themes. Add localized user-facing strings to all dictionaries;
   leave generated `components/ui` sources untouched.
@@ -211,9 +226,11 @@ Depends on T4.
 
 Evidence: one bounded local flow enables reports with a controlled provider,
 observes generation, opens the list/detail, retries a failure, and shares a
-report publicly with passcode/expiry and no translation controls. Confirm normal
-article lists/counts and sharing still work. Use the existing local environment
-and preserve its database/settings; do not deploy for acceptance.
+report publicly with passcode/expiry and no translation controls. Confirm
+enabling without a configured key is rejected server-side and the shared
+translation key schedules work. Confirm normal article lists/counts and sharing
+still work. Use the existing local environment and preserve its
+database/settings; do not deploy for acceptance.
 
 ## Integration and acceptance boundary
 

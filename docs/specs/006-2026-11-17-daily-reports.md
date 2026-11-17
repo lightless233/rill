@@ -82,16 +82,24 @@ Scheduling follows the no-backfill requirement above. The enable switch and
 failure-retry policy below remain proposed operational choices:
 
 - Add one persistent Daily reports enable switch, initially off. Reuse the
-  existing AI settings; enabling reports requires a configured AI key. This
-  keeps an existing AI-enabled development instance from silently starting
-  scheduled billable work just because it was upgraded.
+  existing AI settings; enabling reports requires a configured AI key. The
+  settings update path enforces this server-side; UI guidance alone is not
+  sufficient. Reports use the same LLM configuration as translation and re-read
+  it at worker startup and attempt start. If the key is removed after enabling,
+  nonempty generation fails as specified below; the switch is not silently
+  turned off. This keeps an existing AI-enabled development instance from
+  silently starting scheduled billable work just because it was upgraded.
 - On enable or startup, schedule the next future 08:00. Enabling before 08:00
   allows that morning's run; enabling or restarting after 08:00 waits until the
   following morning. Do not immediately generate the latest missed window.
-- If the process was stopped or the feature disabled at a scheduled time, skip
-  that run. Do not enumerate missing dates, create a backlog or fill gaps in the
-  report list. Disabling stops scheduling new work; an already running attempt
-  may finish. Existing reports remain readable after disable/re-enable.
+- If the process was stopped or reports were disabled before a scheduled run
+  was persisted, skip that run. Do not enumerate missing dates, create a
+  backlog or fill gaps in the report list. Re-enabling does not generate dates
+  from the disabled period. Existing reports remain readable after
+  disable/re-enable.
+- While the process remains running, disabling stops producing new due dates;
+  already persisted pending and running attempts may finish normally. A restart
+  still marks unfinished jobs interrupted/failed under the restart rule below.
 - There is at most one active generation job in the application. Persist a
   unique report record for each covered date and its generation state. Repeated
   scheduler ticks, requests and restarts must not create duplicate reports.
@@ -103,6 +111,11 @@ failure-retry policy below remain proposed operational choices:
   same process run. A restart does not replay a pending automatic retry. After
   failure, show an explicit Retry action; one manual retry requests one further
   attempt. Do not automatically regenerate a ready report.
+- For list/detail polling, failed is terminal: stop polling and do not add a
+  next-retry field or keep polling through the automatic retry delay. If the
+  automatic retry later succeeds, the existing page entry/window-focus refresh
+  shows the result. The UI does not need to distinguish a scheduled retry from
+  an exhausted one.
 - On restart, mark unfinished jobs as interrupted/failed for explicit manual
   retry; do not resume their AI requests automatically. Network calls may have
   incurred cost before interruption; persisted uniqueness does not promise
@@ -135,8 +148,10 @@ failure-retry policy below remain proposed operational choices:
   failed jobs are not displayed as completed article bodies. Retry is available
   for failed jobs, including while automatic scheduling is disabled.
 - Refresh status while a visible list/detail contains pending or running jobs;
-  stop that polling after terminal states. Refresh on page entry/window focus
-  to pick up work finished while the user was away. No new SSE channel is needed.
+  stop that polling after terminal states, including failed. Refresh on page
+  entry/window focus to pick up work finished while the user was away,
+  including a successful automatic retry after a failure. No new SSE channel
+  is needed.
 - Reuse the existing public snapshot sharing flow: expiry, optional passcode,
   attempt limits and the public reader. Ready zero-input reports can also be
   shared. Non-ready reports cannot be shared.
@@ -197,6 +212,9 @@ workflow on the user's behalf.
    not filler or an error. Missing keys for required AI work,
    database failures, invalid/incomplete AI output and interrupted requests
    produce recoverable non-ready states, not success-shaped empty results.
+   Enabling without the shared AI key is rejected at the settings boundary; a
+   key removed after enabling makes nonempty work fail without fabricating an
+   empty report.
 5. The sidebar leads to the dated list and report detail, with clear loading,
    failure and running states. Completed reports remain readable across restart
    and while scheduling is off; ordinary article lists/counts are unaffected.
