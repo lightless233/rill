@@ -53,3 +53,7 @@
   after a feed or group reaches zero unread
 - [005 Plan](plans/005-2026-11-17-unread-scope-advance.md): reuse of unread
   navigation and focused regression acceptance
+- [006 Spec](specs/006-2026-11-17-daily-reports.md): scheduled daily synthesis,
+  report reading and snapshot sharing
+- [006 Plan](plans/006-2026-11-17-daily-reports.md): reuse of AI transport,
+  in-process scheduling and article sharing for daily reports
