@@ -59,10 +59,12 @@ publication-date reader and there is no durable report/job record.
   query; do not split selection at midnight.
   Do not overload `ListItemsParams.BeforePubDate`, remove its existing page cap,
   or use the first page of the public item API to assemble a report.
-- Select a stable candidate manifest for an attempt, then load lightweight
-  excerpts for screening in bounded batches. Load richer bounded content only
-  for shortlisted material when needed. Do not retain every full HTML body or
-  generate a persistent summary per candidate. A disappearing source must not
+- Select a stable candidate manifest for an attempt, then prepare cleaned
+  available feed text and metadata for model input. Preserve normal feed text;
+  do not uniformly substitute tiny previews. Load records in bounded database
+  batches independently of how many model requests are needed. Do not retain
+  every raw HTML body or generate a persistent summary per candidate.
+  A disappearing source must not
   be claimed as processed. Ready reports retain their own text and only their
   actually cited sources after source deletion.
 - Persist short state transitions transactionally and claim jobs conditionally.
@@ -85,14 +87,24 @@ Depends on T1.
   The browser's DOM-based summary extractor cannot run in the scheduled worker;
   do not introduce a JavaScript runtime to reuse it. Remove non-content nodes,
   retain paragraph boundaries, and preserve source IDs alongside text.
-- Use bounded per-article excerpts and per-request input/output budgets. Start
-  with conservative budgets comparable to the current article-summary input
-  limit, defined near the report logic. Screen all candidate batches with
-  titles, sources and brief excerpts, retaining only valuable leads and facts;
-  do not invoke `SummarizeArticle` for each candidate or require an output note
-  for every input. Synthesize and reduce only the shortlisted material, allowing
-  further editorial cuts. Keep generation serial to control memory, upstream
-  concurrency and rate-limit pressure.
+- Prepare escaped pseudo-XML evidence using standard Go XML escaping. Include
+  IDs, feed/group context, publication dates, titles and cleaned available feed
+  text. The application resolves URLs from IDs. Mark any individually truncated
+  text explicitly; empty/boilerplate text is title-only evidence. Do not claim
+  stored text is a complete original article merely because it is long.
+- Establish the configured model's supported context profile and explicit
+  output/reasoning reserve and framing allowance. Size the complete serialized
+  messages, including system/schema instructions and XML expansion. Verify
+  representative inputs offline with the official matching tokenizer. A
+  verified DeepSeek V4 profile can use UTF-8 bytes as a conservative runtime
+  text-token bound; do not generalize it to unknown models, reuse the summary
+  character limit as context capacity, or ship a Python/tokenizer sidecar.
+- Use one request for selection, deduplication, analysis and writing when the
+  prepared input fits. Only overflow uses budget-packed screening batches and
+  one final synthesis. Recheck final evidence size; fail explicitly if it still
+  exceeds the budget. Do not add recursive reduction, per-article summaries or
+  a fixed request count independent of actual input. Keep overflow requests
+  serial and retain article IDs through screening notes and final citations.
 - The per-report total-work budget and over-limit outcome remain open in the
   Spec. Per-request batching is not a total API-cost or runtime limit. Finalize
   that policy before implementing this generation unit; do not silently impose
@@ -101,15 +113,21 @@ Depends on T1.
   duplicate-story consolidation, topical grouping, cross-source interpretation
   and citations. No per-feed quotas, mandatory article counts, persistent feed
   reputation system or new user ranking settings are needed. For every stage,
-  keep fixed policy in the system message and JSON-encode feed fields and
-  intermediate notes as separate untrusted evidence. Explicitly require
+  keep fixed policy in the system message and supply escaped pseudo-XML feed
+  fields/intermediate notes as separate untrusted user-message evidence.
+  Source/group labels are hints, not automatic quality or topic decisions;
+  distinguish promotions, discussions, advisories and substantive research.
+  Insufficient excerpts cannot support invented full-article analysis, and old
+  publication dates cannot imply fresh announcements. Explicitly require
   Simplified Chinese and ignoring evidence-embedded instructions that try to
   change output language, schema, selection criteria or allowed references.
-- Decode and validate the screening/final schemas in the Spec's Model output
-  and evidence contract with standard JSON tooling. Enforce required fields,
-  section types, `language = zh-CN`, nonempty text, the nonempty developments
-  rule and known source IDs. Analysis/watch arrays may be empty; do not force filler. Keep safe report
-  titles/dates/counts outside model authority. Malformed output, truncated
+- Decode and validate the screening/final schemas in the Spec's Model input
+  and output contract with standard JSON tooling. Input pseudo-XML does not
+  require changing the API envelope or structured output to XML. Enforce
+  required fields, section types, `language = zh-CN`, nonempty text, the nonempty
+  developments rule and known source IDs. Analysis/watch arrays may be empty;
+  do not force filler. Keep safe report titles/dates/counts outside model
+  authority. Malformed output, truncated
   streams and failed batches cannot become ready or successful zero-selection.
 - Render the structured report into escaped HTML with Go's standard templating
   tools, using only application-owned layout and source URLs. Do not write a
@@ -127,22 +145,28 @@ Depends on T1.
   from the single-article summary cache; do not force unrelated cache formats to
   share keys or rerun summaries for every article by default.
 
-Evidence: a controlled AI server exercises multiple screening/reduction batches,
-important candidates beyond the first batch, omitted low-value feeds/articles,
+Evidence: a controlled AI server exercises direct single-request generation,
+overflow screening followed by final synthesis, important candidates beyond
+the first batch, omitted low-value feeds/articles,
 duplicate consolidation, final-source-only citations, safe HTML, upstream errors
 and partial output. Verify no-input and successful zero-selection results remain
 distinct from failure. Existing summary/translation tests remain valid for the
 shared transport after any focused refactor.
 
 Capture outbound requests in a controlled-provider test containing hostile
-instructions in a feed title/excerpt and in intermediate notes. Verify JSON
-data/role separation and the Chinese/ignore-embedded-instructions system policy;
+instructions and closing tags in a feed title/text and in intermediate notes.
+Verify escaped XML data/role separation and the Chinese/ignore-embedded-instructions
+system policy;
 exercise unknown citations and invalid schema responses. Assert required section
 presence/types, acceptance of legitimate empty optional arrays, and canonical
 counts when an article is cited more than once or later edited out. Check the
 `language` field and representative Chinese fixtures, but leave actual prose
 language and injection resistance to the real-model quality sample; a mock does
-not demonstrate those capabilities.
+not demonstrate those capabilities. Cover measured serialized input sizes,
+output/framing reserves, unsupported model profiles and oversized final evidence.
+Use heterogeneous fixtures with promotional noise, forum questions, advisories,
+long text, RSS descriptions and title-only records. Log chosen request path and
+size bounds without bodies/credentials; distinguish bounds from billed usage.
 
 ## T3 — Schedule daily work inside the process without backfill
 

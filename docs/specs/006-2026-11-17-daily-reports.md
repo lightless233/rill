@@ -51,17 +51,31 @@ or deployment.
   include weak material to reach a fixed article/section count. A feed's absence
   from one report does not unsubscribe it or permanently exclude its articles.
 - Work from stored feed content; do not fetch full websites or external news.
-  Each input includes its title, feed name, original URL and a bounded text
-  excerpt. Screen with lightweight title/source/excerpt inputs before deeper
-  synthesis; do not call the single-article summary flow for every candidate.
-  Editorial exclusion is valid; accidental omission because a request hit its
-  context limit is not. Identify the report as based on available feed content.
-- Screen in bounded batches, retaining only promising material for synthesis.
-  Combine that material into prioritized topics and remove further weak or
-  redundant points during final editing. If notes exceed one request's budget,
-  reduce them in further bounded batches. Screening need not produce a saved
-  summary for each article, and shortlisted material need not all appear in the
-  final report. Incomplete or failed screening is not successful exclusion.
+  Supply article IDs, titles, feed names, group hints, publication dates and
+  available cleaned feed text. Preserve ordinary available text rather than
+  uniformly replacing every article with a short preview. An individually
+  oversized text may be excerpted only with an explicit truncation marker.
+  Resolve original URLs from IDs in the application rather than repeating
+  URLs throughout model input. Identify the report as based on feed content.
+- Treat mixed material according to its actual substance. Promotions, forum
+  questions, resource notices, security advisories and research articles are
+  not interchangeable. Source/group names are context, not reliable topic or
+  quality labels. Do not hard-code a permanent source/topic blacklist or rank
+  stories by posting volume. Empty text or boilerplate such as "Comments" is
+  title-only evidence. RSS descriptions support only the facts they contain;
+  omit insufficiently supported leads or describe their limited evidence,
+  never imply that the original article was read. Older publication dates must
+  not become claims that something was newly announced during this window.
+- Prefer one request that selects, consolidates, analyzes and writes the report
+  when the prepared input fits the explicit model budget below. Do not require
+  screening calls, one summary per article or recursive reduction for every
+  report. Only overflowing input uses size-bounded screening batches followed
+  by one final synthesis request. All candidates remain eligible for screening;
+  editorial exclusion is valid, context-limit omission is not. Shortlisted
+  material need not all appear in the final report. Incomplete or failed
+  screening is not successful exclusion. If retained evidence cannot fit the
+  final request, fail explicitly for input budget rather than silently dropping
+  material or starting an unbounded reduction chain.
 - The report contains an overview, important developments grouped by topic,
   cross-source analysis, and points worth watching. Sections may be short when
   there is little material; do not manufacture trends or pad the report.
@@ -76,24 +90,43 @@ or deployment.
 - Use the configured AI endpoint, key and model already shared by translation
   and article summaries. No new provider integration or model picker is needed.
 
-## Model output and evidence contract
+## Model input and output contract
 
-- In screening, reduction and final synthesis, application instructions belong
-  in the system message. Put feed titles, metadata, excerpts and intermediate
-  model notes in a separate, JSON-encoded user-message data object explicitly
-  labeled as untrusted evidence. Do not interpolate their text into system
-  instructions or promote intermediate notes into a trusted role.
+- Fixed application instructions belong in the system message. Supply article
+  evidence in a separate user message using pseudo-XML, not a JSON data object:
+
+  ```xml
+  <daily_report_input timezone="Asia/Shanghai"
+                      start="2026-11-17T08:00:00+08:00"
+                      end="2026-11-18T08:00:00+08:00">
+    <untrusted_articles>
+      <article id="123">
+        <source>Example research blog</source>
+        <group_hint>Security research</group_hint>
+        <published_at>2026-11-17T12:00:00+08:00</published_at>
+        <title>Article title</title>
+        <feed_text scope="stored_feed_text_only">Available feed text...</feed_text>
+      </article>
+    </untrusted_articles>
+  </daily_report_input>
+  ```
+
+  Escape all untrusted field values with standard XML escaping, including text
+  containing closing tags; do not insert raw CDATA or raw feed HTML. Mark text
+  truncation explicitly. Intermediate screening notes use the same untrusted
+  user-message boundary and escaped XML representation. Never promote them to
+  system instructions. XML separates evidence; it is not a model-safety proof.
 - The system policy requires natural Simplified Chinese, preserving technical
   terms and names, and explicitly ignores instructions embedded in evidence.
   Such text cannot change the language, schema, selection rules or allowed
-  source IDs. JSON encoding separates data; it is not a guarantee that a model
-  will always resist prompt injection.
+  source IDs. This applies to direct generation and both overflow stages.
 - Screening returns required arrays `selected_ids` (article IDs) and `notes`
   (objects with `heading`, `text` and `source_ids`, using the section-entry shape
   below). An explicit empty selection and empty notes is valid. Notes may
-  reference only selected IDs from that screening batch. Reductions carry these
-  source IDs forward without inventing new ones.
-- Final synthesis uses this required JSON shape. The displayed title, date,
+  reference only selected IDs from that screening batch.
+- The HTTP API envelope and machine-validated model result remain JSON; this
+  does not change the requested pseudo-XML representation of input evidence.
+  Final generation uses this required JSON shape. The displayed title, date,
   period and counts are application-owned, not model-generated fields:
 
   ```json
@@ -119,9 +152,11 @@ or deployment.
   heading/text and at least one valid source ID. The overview also cites its
   supporting sources. Analysis/watch arrays may be empty if unsupported; do not
   force cross-source claims or filler. Omit empty sections from rendered HTML.
-- Final references must belong to shortlisted evidence. The application resolves
-  their original titles/URLs; model-generated HTML or URLs are not used. Missing
-  fields, wrong types, unsupported IDs and incomplete output fail generation.
+- Direct-generation references must belong to supplied candidates; overflow
+  synthesis references must belong to the shortlisted evidence supplied to that
+  request. The application resolves original titles/URLs; model-generated HTML
+  or URLs are not used. Missing fields, wrong types, unsupported IDs and
+  incomplete output fail generation.
 - Zero-input and successful zero-selection reports use application-generated
   Chinese overview text, empty section arrays and no citations. A broken model
   response is not treated as a zero-selection decision.
@@ -130,6 +165,38 @@ or deployment.
   sent and represented correctly; the real-model quality sample also checks
   actual Chinese prose and behavior on instruction-bearing source text. Do not
   add a language-classification service or claim a stub proves model safety.
+
+## Input sizing and request selection
+
+- Decide fit from the serialized messages, including fixed instructions,
+  escaped XML, metadata and any result-schema instructions, not article count
+  or an assumed characters-per-token ratio. The model's supported context must
+  cover the input token bound, the requested output/reasoning reserve and
+  message-framing/safety allowance. Set those reserves explicitly before
+  generation and configure the output limit accordingly. The existing
+  single-article summary's character limit is not a model context limit.
+- Establish a supported profile for the configured provider/model using its
+  official context documentation and tokenizer. Check representative prepared
+  requests offline with that tokenizer. For a verified byte-level tokenizer
+  such as DeepSeek V4, serialized UTF-8 byte length is a conservative text-token
+  upper bound; framing and output still need their own allowance. This is not
+  exact billed usage or a universal rule for arbitrary tokenizers. The worker
+  must not require a Python sidecar or a newly written tokenizer engine.
+  See [DeepSeek context documentation](https://api-docs.deepseek.com/quick_start/pricing/)
+  and [official token-counting resources](https://api-docs.deepseek.com/quick_start/token_usage/).
+- Do not apply one provider's context size to every configured model. An
+  unsupported profile is an explicit configuration limitation, not permission
+  to guess capacity. A generic capability-discovery framework or new model
+  configuration screen is outside this change.
+- If the complete prepared input fits, use the direct one-request path. If it
+  does not, pack complete candidate records into bounded screening requests,
+  then size the retained evidence again before final synthesis. Log input-size
+  bounds, chosen path and request counts without source bodies or credentials;
+  keep estimated bounds distinct from actual provider-reported usage.
+- Fitting the context establishes capacity, not editorial quality. The agreed
+  real-model sample must include mixed-source noise and important material at
+  different input positions; check omissions, grounding and useful prioritization
+  before claiming this request strategy meets the reading requirement.
 
 ## Counts
 
@@ -289,7 +356,7 @@ These are planned extensions, not currently implemented APIs.
 - No new framework or parser merely to render model Markdown; report content
   can use structured model output and application-generated safe article HTML.
 - Local work is text/SQLite processing; model inference remains at the
-  configured provider. Batch limits bound individual requests and working
+  configured provider. Input budgets bound individual requests and working
   memory, not a report's total request count or total runtime. Do not describe
   these limits as a complete automatic-spending budget or promise a fixed price.
 
@@ -315,14 +382,19 @@ workflow on the user's behalf.
    08:00, makes no historical AI calls and schedules only the next future 08:00.
    Interrupted jobs remain failed until manually retried; ready reports are
    never automatically regenerated.
-3. A multi-batch candidate pool containing important stories, repeated coverage
+3. A mixed candidate pool containing important stories, repeated coverage
    and low-value articles produces a grounded, prioritized Chinese report.
    Important items can be selected even beyond the first page/batch; low-value
    articles and entire feeds may be absent. Merge duplicate stories and cite
    only actual final sources. Candidate enumeration/screening must not silently
    become first-N sampling, and no per-candidate summary is required.
-   Controlled-provider cases inspect separated roles/JSON evidence with an
-   embedded "ignore instructions / output English / cite another URL" payload,
+   A fitting prepared input uses one generation request. Overflow uses bounded
+   screening requests and one final request; oversized final evidence fails
+   explicitly without recursive reduction. Cases include promotions, forum
+   questions, advisories, long text, RSS excerpts and title-only evidence.
+   Controlled-provider cases inspect separated roles/escaped XML evidence with
+   closing tags and an embedded "ignore instructions / output English /
+   cite another URL" payload,
    and reject missing sections, wrong field types, wrong language metadata and
    unknown citations. A short report may have empty analysis/watch arrays.
 4. Zero candidates produce a readable report without calling AI. Successful
