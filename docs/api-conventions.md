@@ -60,6 +60,22 @@ disagree, the code wins — fix the page.
 - `limit` is capped at 100 on every endpoint that accepts one (items,
   bookmarks, search); `maxListLimit` in `backend/internal/handler/item.go`.
 
+### Planned daily report extension (not implemented)
+
+[Spec 006](specs/006-2026-11-17-daily-reports.md#http-and-share-snapshot-contract)
+defines the future report HTTP contract. Its list will reuse the two-int64
+cursor with `(period_start, id)`, ordered DESC and exclusive of `before`;
+`period_start` is the Unix timestamp of the report window's 08:00 start in
+Asia/Shanghai, not its date string or generation time. State changes must not
+move rows between pages. See the Spec for totals, end-of-list behavior and
+validation; these are proposals, not existing report endpoints.
+
+The same planned extension adds mutually exclusive `report_date` (`YYYY-MM-DD`)
+and `item_id` sources to share creation. Report shares reuse the public snapshot
+shape, with `pub_date = 0` and the fixed-zone coverage period inside `content`.
+The Spec owns the full mapping and source/status rules. Remove this planned
+label and reconcile the implemented conventions when the feature is developed.
+
 ## Errors
 
 Handlers report failures as `{"error": "<message>"}`:

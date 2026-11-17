@@ -71,10 +71,82 @@ or deployment.
 - Give conclusions source references linked to actual selected articles.
   Source IDs and URLs come from the application; the model must not invent
   destinations. The source appendix contains only articles actually cited in
-  the final report, not the entire candidate pool. Distinguish candidate counts
-  from final selected/cited article counts; never describe them as all summarized.
+  the final report, not the entire candidate pool. Use the count definitions
+  below; never describe all candidates as summarized.
 - Use the configured AI endpoint, key and model already shared by translation
   and article summaries. No new provider integration or model picker is needed.
+
+## Model output and evidence contract
+
+- In screening, reduction and final synthesis, application instructions belong
+  in the system message. Put feed titles, metadata, excerpts and intermediate
+  model notes in a separate, JSON-encoded user-message data object explicitly
+  labeled as untrusted evidence. Do not interpolate their text into system
+  instructions or promote intermediate notes into a trusted role.
+- The system policy requires natural Simplified Chinese, preserving technical
+  terms and names, and explicitly ignores instructions embedded in evidence.
+  Such text cannot change the language, schema, selection rules or allowed
+  source IDs. JSON encoding separates data; it is not a guarantee that a model
+  will always resist prompt injection.
+- Screening returns required arrays `selected_ids` (article IDs) and `notes`
+  (objects with `heading`, `text` and `source_ids`, using the section-entry shape
+  below). An explicit empty selection and empty notes is valid. Notes may
+  reference only selected IDs from that screening batch. Reductions carry these
+  source IDs forward without inventing new ones.
+- Final synthesis uses this required JSON shape. The displayed title, date,
+  period and counts are application-owned, not model-generated fields:
+
+  ```json
+  {
+    "language": "zh-CN",
+    "overview": {"text": "简体中文概览", "source_ids": [1]},
+    "developments": [
+      {"heading": "重点动态", "text": "简体中文事实摘要", "source_ids": [1]}
+    ],
+    "cross_source_analysis": [
+      {"heading": "关联分析", "text": "有依据的解读", "source_ids": [1, 2]}
+    ],
+    "watch_points": [
+      {"heading": "后续关注", "text": "值得跟进的问题", "source_ids": [2]}
+    ]
+  }
+  ```
+
+- All five top-level fields and the shown object fields are required with
+  their stated types; `language` must equal `zh-CN`. `overview.text` is nonempty.
+  For a report with selections,
+  `developments` contains at least one entry; every emitted entry has nonempty
+  heading/text and at least one valid source ID. The overview also cites its
+  supporting sources. Analysis/watch arrays may be empty if unsupported; do not
+  force cross-source claims or filler. Omit empty sections from rendered HTML.
+- Final references must belong to shortlisted evidence. The application resolves
+  their original titles/URLs; model-generated HTML or URLs are not used. Missing
+  fields, wrong types, unsupported IDs and incomplete output fail generation.
+- Zero-input and successful zero-selection reports use application-generated
+  Chinese overview text, empty section arrays and no citations. A broken model
+  response is not treated as a zero-selection decision.
+- `language: "zh-CN"` is structural metadata, not proof of the prose language.
+  Prompts and controlled-provider checks verify the language requirement is
+  sent and represented correctly; the real-model quality sample also checks
+  actual Chinese prose and behavior on instruction-bearing source text. Do not
+  add a language-classification service or claim a stub proves model safety.
+
+## Counts
+
+| Field | Meaning |
+| --- | --- |
+| `candidate_count` | Number of distinct stored article IDs in the attempt's frozen, eligible window manifest, before editorial screening. |
+| `selected_count` | Number of distinct article IDs referenced across the final overview and emitted sections; equal to the source appendix size. |
+
+An intermediate shortlist is internal work, not the final selected count.
+"Cited" means selected by the definition above; do not expose or persist a
+separate `cited_count` with another meaning. One article cited repeatedly counts
+once. A ready report has `0 <= selected_count <= candidate_count`; successful
+zero-selection has a positive candidate count and zero selected count, while
+zero-input has both zero. Until the manifest is fixed, `candidate_count` is
+unknown/null; `selected_count` stays unknown/null until ready. A retry resets
+attempt-derived counts before recomputing them. Lists, detail headers, generated
+body metadata and share snapshots use these same persisted values.
 
 ## Scheduling and generation lifecycle
 
@@ -162,6 +234,48 @@ failure-retry policy below remain proposed operational choices:
   generation controls. The current public reader already has no translation
   feature; this work preserves that boundary.
 
+## HTTP and share snapshot contract
+
+These are planned extensions, not currently implemented APIs.
+
+- Authenticated report reads use `GET /api/daily-reports` and
+  `GET /api/daily-reports/:report_date`; failed-job retry uses
+  `POST /api/daily-reports/:report_date/retry`. A report date is an exact, valid
+  `YYYY-MM-DD` calendar-date string identifying the window start in Asia/Shanghai.
+  It is not a browser-local timestamp.
+- The report list uses the existing paginated envelope. Order by
+  `(period_start DESC, id DESC)`, where `period_start` is Unix seconds for that
+  report date's 08:00 Asia/Shanghai. `before` is the existing two-int64 cursor
+  `"<period_start>_<id>"`, not a date string or generation timestamp. Select
+  rows strictly older than that pair: `period_start < start` or equal start
+  with `id < cursor_id`. Missing `before` starts at the newest row; malformed
+  cursors/dates return `400`. Cursor timestamps need not identify an existing row.
+- Reuse existing list-limit validation/defaults. `total` counts all report rows,
+  including pending/running/failed rows, independent of `before`. A full page
+  may emit the last row's cursor; an empty or short page has `next_cursor: null`,
+  following the current item-list convention. State changes/retries do not
+  change ordering keys. No missing-date placeholder rows are synthesized.
+- Extend authenticated `POST /api/shares` with `report_date`. Accept exactly
+  one valid source: positive `item_id` or the date string above; both, neither
+  or an invalid supplied source return `400`. Existing item-only requests stay
+  valid. The expiry/passcode fields keep their existing meanings. A missing
+  report returns `404`; a non-ready report returns `409`.
+- For report snapshots, map the existing share fields as follows:
+
+  | Share field | Report mapping |
+  | --- | --- |
+  | `title` | Persisted, application-generated nonempty title: `Rill 日报 · YYYY-MM-DD`. |
+  | `content` | Persisted safe report HTML, including its full coverage period labeled Asia/Shanghai, canonical counts and final source appendix. |
+  | `link` | Empty string; do not expose an authenticated report URL as an external source link. |
+  | `feed_name` | `Rill 日报`. |
+  | `pub_date` | `0`, so the existing public reader hides its browser-local/relative publication-date label. |
+  | Stored source `item_id` | NULL; reports are not fake RSS items. |
+
+  Render the period in the report HTML with the fixed Asia/Shanghai timezone,
+  including both dates and 08:00 endpoints. Public readers in other timezones
+  see that same coverage period. Share expiry still uses its existing timestamp
+  behavior. Ordinary article snapshot field mappings remain unchanged.
+
 ## Boundaries
 
 - No synthetic RSS subscription or fake Item IDs for generated reports.
@@ -207,6 +321,10 @@ workflow on the user's behalf.
    articles and entire feeds may be absent. Merge duplicate stories and cite
    only actual final sources. Candidate enumeration/screening must not silently
    become first-N sampling, and no per-candidate summary is required.
+   Controlled-provider cases inspect separated roles/JSON evidence with an
+   embedded "ignore instructions / output English / cite another URL" payload,
+   and reject missing sections, wrong field types, wrong language metadata and
+   unknown citations. A short report may have empty analysis/watch arrays.
 4. Zero candidates produce a readable report without calling AI. Successful
    screening with zero worthwhile selections produces a distinct short report,
    not filler or an error. Missing keys for required AI work,
@@ -221,6 +339,11 @@ workflow on the user's behalf.
 6. A completed report can be shared with the existing expiry/passcode options.
    The public snapshot renders correctly without login and with no translation
    control; normal article sharing remains unchanged.
+   Verify the exact report snapshot mapping, source exclusivity and identical
+   coverage-period text across browser timezones. Paginating reports during a
+   retry has no duplicate/omitted rows; malformed cursors fail and the final
+   empty/short page ends pagination. Repeated citations do not inflate counts,
+   and intermediate selections absent from the final report are not counted.
 7. Planned correctness checks use a controlled AI test server and clock. A live
    model-quality sample uses a small agreed dataset after credentials and cost
    are authorized; document simulated-provider evidence separately from actual

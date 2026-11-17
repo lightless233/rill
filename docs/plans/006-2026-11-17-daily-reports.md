@@ -45,6 +45,9 @@ publication-date reader and there is no durable report/job record.
   timing.
   Keep source references as report-owned snapshots rather than cascading
   foreign keys to live articles. Do not store AI keys in report records.
+  Use the Spec's canonical `candidate_count` and `selected_count` definitions;
+  a shortlist is internal and `cited_count` is not another persisted metric.
+  Preserve null/unknown counts before their corresponding stage completes.
 - Add the persistent enable switch through the existing settings path. Validate
   enabling server-side against the shared translation LLM key; UI guidance
   alone is not sufficient. Do not add a separate AI configuration, a
@@ -97,20 +100,26 @@ Depends on T1.
 - Use report-specific prompts for significance/information-value screening,
   duplicate-story consolidation, topical grouping, cross-source interpretation
   and citations. No per-feed quotas, mandatory article counts, persistent feed
-  reputation system or new user ranking settings are needed. Collect structured
-  output with the standard JSON decoder;
-  validate usable sections and references against the supplied source IDs.
-  malformed output, unsupported source IDs, truncated streams and failed
-  batches cannot produce a ready report. An explicit successful zero-selection
-  result is valid; an empty or broken model response is not that result.
+  reputation system or new user ranking settings are needed. For every stage,
+  keep fixed policy in the system message and JSON-encode feed fields and
+  intermediate notes as separate untrusted evidence. Explicitly require
+  Simplified Chinese and ignoring evidence-embedded instructions that try to
+  change output language, schema, selection criteria or allowed references.
+- Decode and validate the screening/final schemas in the Spec's Model output
+  and evidence contract with standard JSON tooling. Enforce required fields,
+  section types, `language = zh-CN`, nonempty text, the nonempty developments
+  rule and known source IDs. Analysis/watch arrays may be empty; do not force filler. Keep safe report
+  titles/dates/counts outside model authority. Malformed output, truncated
+  streams and failed batches cannot become ready or successful zero-selection.
 - Render the structured report into escaped HTML with Go's standard templating
   tools, using only application-owned layout and source URLs. Do not write a
   second Markdown engine: the current concise summary renderer does not support
   citation links, while the article/public readers already accept sanitized HTML.
 - Count all eligible candidates separately from unique articles actually cited
   in the final report. Build the appendix from final references only, not every
-  candidate or intermediate shortlist. Omit unsupported historical comparisons
-  and claims of external verification.
+  candidate or intermediate shortlist. Calculate `selected_count` from that
+  deduplicated final reference set and reuse it in list/detail/body/share output.
+  Omit unsupported historical comparisons and claims of external verification.
 - For nonempty work, read the latest existing AI settings at attempt start.
   Zero-input completion needs no AI request or currently configured key. If
   screening succeeds with no worthwhile leads, persist a concise ready report
@@ -124,6 +133,16 @@ duplicate consolidation, final-source-only citations, safe HTML, upstream errors
 and partial output. Verify no-input and successful zero-selection results remain
 distinct from failure. Existing summary/translation tests remain valid for the
 shared transport after any focused refactor.
+
+Capture outbound requests in a controlled-provider test containing hostile
+instructions in a feed title/excerpt and in intermediate notes. Verify JSON
+data/role separation and the Chinese/ignore-embedded-instructions system policy;
+exercise unknown citations and invalid schema responses. Assert required section
+presence/types, acceptance of legitimate empty optional arrays, and canonical
+counts when an article is cited more than once or later edited out. Check the
+`language` field and representative Chinese fixtures, but leave actual prose
+language and injection resistance to the real-model quality sample; a mock does
+not demonstrate those capabilities.
 
 ## T3 — Schedule daily work inside the process without backfill
 
@@ -171,16 +190,21 @@ cron or new daemon is introduced.
 Depends on T1/T3; share content also depends on T2's persisted HTML.
 
 - Add authenticated report list/detail and failed-job retry handlers with
-  matching frontend types/client/query keys. Use date-based detail identity and
-  the existing list envelope/cursor conventions; keep list rows free of full
-  bodies. Validate real calendar dates and report existence at the boundary.
+  matching frontend types/client/query keys. Use the exact paths/date format in
+  the Spec, and reuse `parseCursor`/`paginatedListResponse` for its exclusive
+  `(period_start, id)` pagination contract. Do not introduce a date-string cursor
+  or order by mutable generation timestamps. Keep list rows free of full bodies;
+  count totals independently of `before`. Validate dates and source existence.
 - Return persisted status promptly. A retry is asynchronous (`202`), claims no
   second job when already pending/running, and cannot regenerate a ready report.
   Use `404` for missing reports and `409` for an incompatible ready-state retry;
   record this new state-conflict convention in the API documentation.
 - Extend share creation to accept exactly one source: the existing `item_id`
-  or a report date. Resolve that source server-side; never accept client-supplied
-  report HTML. Unknown sources fail, and non-ready reports cannot be shared.
+  or `report_date` in exact `YYYY-MM-DD` format. Implement the source validation,
+  status codes and snapshot field mapping in the Spec, including `pub_date = 0`
+  and an empty `link`. Resolve report content server-side; never accept
+  client-supplied report HTML. Put the fixed-zone coverage period and canonical
+  counts in stored content before either private reading or snapshot sharing.
 - Keep the original item-only payload valid. After resolving report content,
   reuse the existing token, passcode, expiry and snapshot persistence flow.
   `CreateArticleShareParams.ItemID` already allows nil, so report snapshots need
@@ -192,6 +216,11 @@ Depends on T1/T3; share content also depends on T2's persisted HTML.
 Evidence: handler tests cover authentication, pagination/status reads,
 idempotent running retries, ready-state conflicts, source exclusivity, report
 snapshot creation and unchanged ordinary article sharing/passcode/expiry.
+Cover multi-page exclusive boundaries while a row's job state changes, malformed
+cursors, end-of-list behavior, exact share field mappings and count consistency.
+Verify the public report hides the relative publication date and retains its
+fixed-zone coverage text in different browser timezones. Update the planned API
+notes in `docs/api-conventions.md` when these contracts become implemented.
 
 ## T5 — Add report navigation, reading and settings UI
 
@@ -242,7 +271,8 @@ integrated change is ready, expanding only for affected failures.
 Structural tests cannot establish report writing quality. After correctness,
 use one small explicitly authorized real-model sample to assess Chinese prose,
 editorial focus, omission of low-value material, deduplication, supported analysis
-and citations, and record its actual input volume/request count. Do not present
+and citations, including a source containing instructions to change language or
+fabricate a link, and record its actual input volume/request count. Do not present
 a stubbed response as AI-quality evidence
 or promise a fixed cost based on the model name alone.
 
