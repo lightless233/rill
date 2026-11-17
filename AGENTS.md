@@ -38,13 +38,24 @@
 
 ## Go Development
 
-- After modifying Go code, run `goimports -w .` before verification.
+- Run goimports on Go files changed by the task before verification; do not reformat unrelated files.
 - Verify compilation with `go build -o /dev/null /path/to/file_or_dir`.
 - Run related tests and ensure they pass.
 - Use named SQL parameters (e.g., `:param_name` or `@param_name`).
 
 ## Frontend Development
 
-- Verify TypeScript/TSX compilation with `pnpm run typecheck` (regenerates the TanStack route tree first — `routeTree.gen.ts` is a generated, gitignored file).
-- Run frontend unit tests with `pnpm test` (vitest); check i18n completeness with `pnpm run check:i18n`.
+- For frontend code changes, run `pnpm run typecheck`, `pnpm run lint`, `pnpm test` (vitest), and `pnpm run check:i18n` as relevant to the change. Typecheck regenerates the TanStack route tree first; `routeTree.gen.ts` is generated and gitignored.
 - shadcn components use Base UI (`@base-ui/react`) on the `base-vega` style. Regenerate via CLI (`pnpm dlx shadcn@latest add <component> --overwrite`) instead of hand-editing source files in `frontend/src/components/ui/`.
+
+## Build and Verification
+
+- Run direct Go commands in `backend/` and pnpm commands in `frontend/`.
+- For a runnable binary containing frontend changes, run `./scripts.sh build-frontend` followed by `./scripts.sh build-backend` from the repository root. The frontend step also syncs assets into the backend embed directory; a standalone frontend build does not.
+- Documentation-only changes do not require application tests. Reuse valid verification results when relevant inputs and outputs are unchanged.
+
+## Deployment
+
+- Deploy only when explicitly authorized. Use the existing `deploy/deploy.sh`; do not back up the database by default. Supply `--backup-db` only when the user explicitly requests a backup.
+- After user-confirmed local acceptance, deploy and confirm basic service health without repeating functional acceptance unless requested or a concrete deployment failure requires investigation.
+- Reuse the existing local environment and data; do not create a separate preview environment or replace its database unless requested.
