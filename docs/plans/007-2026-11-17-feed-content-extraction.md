@@ -44,10 +44,22 @@ No new third-party dependency is needed. This work does not resume Spec 006.
   a caller-owned context and proxy. Respect the existing allow-private setting
   on the initial request and redirects. Check origin status/document type;
   do not turn a denied/error page into a successful article.
-- Parse the returned HTML with goquery, remove script/style/noscript nodes and
-  exclusion matches, then extract selected roots in document order without
-  repeating nested selections. Preserve HTML rather than plain text; report
-  no-match/empty outcomes explicitly. Accept short text and image content.
+- Read at most the Spec's article-page limit plus one byte from the
+  decompressed HTTP body to detect overflow. Reject overflow explicitly rather
+  than handing a silently truncated document to the parser. Keep this limit
+  local to article extraction; do not change RSS parsing or discovery limits.
+- Decode the bounded HTML through `golang.org/x/net/html/charset.NewReader`
+  with the response Content-Type, preserving its BOM/meta sniffing behavior.
+  That module is already in the dependency tree; do not introduce another
+  encoding dependency, detection heuristic or user setting. Parse UTF-8 output
+  with goquery, remove script/style/noscript nodes and exclusion matches, then
+  extract selected roots in document order without
+  repeating nested selections. Serialize each retained root with
+  `goquery.OuterHtml` (or equivalent root-preserving `html.Render`), not
+  `Selection.Html()`, which omits the root and only reads the first selected
+  node. Concatenate root fragments in document order, not selector-list order.
+  Preserve HTML rather than plain text; report no-match/empty outcomes
+  explicitly. Accept short text and image content.
 - Resolve relative links/images against the final response URL before returning
   the extracted fragment and that URL. Do not introduce pagination, lazy-image
   heuristics, URL rewrite rules or another HTML sanitizer. All app renderers
@@ -55,8 +67,10 @@ No new third-party dependency is needed. This work does not resume Spec 006.
 
 Evidence: focused extraction tests cover valid/invalid selectors, exclusion,
 multiple/nested roots, formatting, short/image content, final-URL resolution,
-no match/empty output, upstream errors and context cancellation. Use controlled
-HTML/HTTP fixtures, not live sites or browser page rendering.
+direct `table`/`ul`/`pre` roots, header/meta-declared GBK Chinese, exact-limit and
+oversized response bodies, no match/empty output, upstream errors and context
+cancellation. Use controlled HTML/HTTP fixtures, not live sites or browser page
+rendering.
 
 ## T2 — Persist feed rules and expose draft preview
 
@@ -73,8 +87,13 @@ Depends on T1.
 - Add the authenticated preview route under the existing router and implement
   the Spec's request, response and error mapping. Check feed existence, resolve
   saved versus draft proxy, and call the T1 extractor. Preview has no store
-  writes or pull-state updates. Bind it to the HTTP request context and the
-  existing configured pull timeout. Use the standard response/error helpers.
+  writes or pull-state updates. At handler entry, bind it to the HTTP request
+  context with `min(configured pull timeout, 20 seconds)` as the work budget,
+  covering input decoding, validation, fetch and extraction. Check deadline
+  errors before writing success and return `502` for an exhausted preview
+  budget, including expiry during URL/DNS validation rather than misclassifying
+  it as invalid input. Client cancellation stops work. Preserve the current global server
+  write timeout. Use the standard response/error helpers.
 - Mirror fields and preview types in
   [frontend API types](../../frontend/src/lib/api/types.ts) and the existing
   feed API client. Do not build a separate HTTP client or preview cache.
@@ -86,6 +105,10 @@ Evidence: migration/store round trips and partial-update tests cover defaults,
 save/clear and invalid-update preservation. Handler tests cover authentication,
 draft-rule preview, draft proxy, missing feeds, validation and origin failures,
 and demonstrate no changes to settings/articles/read state/fetch metadata.
+Exercise a slow origin through a real HTTP server with a write timeout and a
+shorter application budget, using scaled durations instead of a long sleep.
+Verify that the client receives a structured `502`, not only that a recorder
+captured an error status. No new public timeout setting is needed for testing.
 
 ## T3 — Extract only new articles before canonical insertion
 
@@ -110,6 +133,11 @@ Depends on T1/T2.
   parent remains active. Parent/process cancellation stops the operation.
   Do not keep an SQLite transaction open during HTTP work or add a second
   semaphore, queue or scheduler.
+- Log the number/reason of RSS fallbacks when the total deadline prevents full
+  coverage. This explicitly accepts partial extraction for a slow/large batch;
+  successful feed refresh does not mean every article was enriched. Stored
+  fallback rows are not retried on later ordinary pulls. Do not silently change
+  this into per-article timeout resets or add a historical retry mechanism.
 - Keep the existing batch insertion/FTS path and notify only after committed
   new rows. Previously stored articles and snapshots are never rewritten by
   saving a selector or by ordinary refresh. No article-reader, AI transport or
@@ -118,6 +146,9 @@ Depends on T1/T2.
 Evidence: extend existing puller tests with mixed known/new/duplicate entries,
 success and fallback in one feed, disabled rules, repeated pulls/304, source
 failure-counter preservation, attempt deadline and process cancellation.
+Include enough delayed new articles to exhaust the shared deadline after only
+some extractions finish, then verify RSS fallback for the remainder, explicit
+fallback logging and no extraction backfill on the following pull.
 Inspect saved content and actual origin request counts, not only mock calls.
 Check that ordinary item reads and new bookmark/share snapshots receive that
 saved body using existing consumer tests where appropriate.
@@ -142,14 +173,20 @@ Depends on T2; integrated acceptance also requires T3.
   Use normal mutation pending state rather than a polling loop or persistent
   preview query.
 - Save both selector changes using the existing partial-update mutation and
-  cache update. Include concise localized guidance that rules apply to future
+  cache update. Compare trimmed draft values with saved values: omit unchanged
+  selectors, but send `""` for a deliberate clear, including whitespace-only
+  edits. Do not copy the existing proxy field's `trim() || undefined` pattern;
+  JSON serialization would drop the clear. Leave unrelated proxy-edit behavior
+  unchanged. Include concise localized guidance that rules apply to future
   new articles, not historical rows. Follow existing i18n dictionary conventions.
 
 Evidence: focused UI behavior coverage plus one bounded browser check of the
 real feed-edit flow: preview a controlled page, change draft rules, handle a
 failed/stale response, save, reopen and clear the rule. Verify preview does not
-change article data. Reuse the existing local app and data; do not replace its
-database or use production origin access as an acceptance prerequisite.
+change article data. Cover the save payload and reload after clearing each
+previously populated selector, including a whitespace-only body edit.
+Reuse the existing local app and data; do not replace its database or use
+production origin access as an acceptance prerequisite.
 
 ## Integration and delivery boundary
 
@@ -159,5 +196,7 @@ and i18n checks for the integrated implementation. No paid AI calls, production
 deployment, 403 investigation or held Daily Report work is included.
 
 The supporting API/schema/pull changes implement the three confirmed features;
-no additional product capability has been added. Stop after delivering these
-documents until the user requests implementation.
+the review adds explicit page-size/preview-time limits, HTML charset decoding
+and root-preserving serialization, not another product feature. The shared
+pull deadline's partial-coverage trade-off remains explicit. Stop after delivering
+these documents until the user requests implementation.

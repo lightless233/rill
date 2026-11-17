@@ -42,6 +42,15 @@ item 006 remain on hold.
 - Use ordinary server-side HTTP and the source's proxy setting, existing URL /
   redirect / private-network policy, default request headers and timeout.
   Remote page JavaScript is not executed.
+- Bound each article-page response to 10 MiB of decompressed response-body
+  bytes, before character decoding. Detect excess bytes and fail explicitly;
+  never parse a silently truncated prefix as successful content. This applies
+  to preview and automatic article extraction, not RSS/Atom feed fetching.
+- Decode HTML to UTF-8 using its BOM, HTTP Content-Type and HTML meta encoding
+  declarations through the existing `golang.org/x/net/html/charset` package
+  before DOM parsing. Support declared GBK/GB2312 pages as well as UTF-8;
+  do not add a custom encoding detector or an encoding setting. Pages with
+  missing/incorrect declarations are subject to that package's sniffing limits.
 - Remove non-content script/style/noscript nodes, apply exclusions to the
   document, then select body roots. Preserve document order and include nested
   matches only once. If exclusions remove a selected root, it contributes
@@ -49,8 +58,12 @@ item 006 remain on hold.
   failure, not successful empty content. Do not impose a minimum prose length.
 - Preserve the selected HTML structure, including paragraphs, lists, tables,
   code blocks, images and links supported by the existing article renderer.
-  Do not replace the result with plain `.Text()`. Resolve relative `href` and
-  image `src` values against the final response URL so redirects do not break
+  Serialize each retained root with its outer HTML, preserving the root itself
+  even when the selector directly matches `table`, `ul`, `pre` or `blockquote`.
+  Concatenate those complete fragments in document order; selector-list order
+  does not reorder content. Do not use inner HTML alone or plain `.Text()`.
+  Resolve relative `href` and image `src` values against the final response
+  URL so redirects do not break
   stored content. Rendering continues to use the existing content sanitizer.
 - Preview and automatic extraction use the same fetch/extraction behavior.
   A preview uses supplied draft rules; a pull uses the feed configuration read
@@ -84,6 +97,14 @@ item 006 remain on hold.
   cancellation stops work instead of starting more requests or recording a
   source failure. Database failures remain failures; they are not treated as
   evidence that an article is new or that saving succeeded.
+- This total-deadline policy is a design trade-off, not a user requirement to
+  limit extraction coverage. It does not guarantee extraction for every new
+  article: a slow origin or a large first-seen batch may exhaust the attempt
+  after only some successes. Remaining articles are saved with RSS content,
+  with the fallback count/reason logged. Later ordinary pulls skip those stored
+  GUIDs, so they do not automatically get full text later. Do not describe a
+  completed feed pull as proof that all article extractions succeeded. No
+  per-article timeout reset, extra budget or catch-up mechanism is introduced.
 - Preserve the existing uniqueness, unread state, conditional-feed metadata,
   item insertion and new-item notification behavior. Network work never holds
   an SQLite transaction open.
@@ -100,20 +121,31 @@ These are planned additions, not implemented endpoints.
   The existing feed PATCH accepts partial updates: omitted fields keep their
   values and an explicit empty string clears a field. No article schema or
   article API shape change is required.
+- The edit form must send `""` when a previously populated selector is cleared,
+  including a whitespace-only edit after trimming. Omit unchanged fields;
+  never convert a deliberate clear to `undefined` and lose it in JSON encoding.
 - Add authenticated `POST /api/feeds/:id/extraction/preview` using the existing
   API/session conventions. The request contains an article `url`, a required
   nonempty `content_selector`, optional `exclude_selector` (default empty), and
   optional `proxy`. An omitted proxy uses the saved feed proxy; an explicit
   empty proxy means direct access. A supplied proxy is validated exactly as
   in feed settings and is not saved by preview.
+- Give preview its own work deadline of the smaller of the configured pull
+  timeout and 20 seconds, starting on handler entry before request decoding
+  and validation. This leaves response-writing headroom under the current
+  [HTTP server write timeout](../../backend/cmd/fusion/main.go). Do not extend
+  the global write timeout or add a user-configurable preview timeout. Preview
+  deadline expiration returns `502` while the connection is writable; a
+  client-disconnected request stops work without requiring a response.
 - Return `200` with `{"data":{"content":"<article HTML>","url":"<final URL>"}}`.
   The response HTML is untrusted and must pass through the same sanitizer as
   ordinary article content before entering the preview DOM.
 - Use the existing error envelope: `400` for invalid URL/proxy/selector input,
   blocked target policy, no match or empty extraction; `404` for a missing feed;
-  `502` for origin DNS/network/timeout/non-success HTTP or unsupported document
-  type; `500` for internal failures. Keep invalid selectors, no match and
-  upstream failures distinguishable by their messages. A failed preview must
+  `502` for origin DNS/network/timeout/non-success HTTP, unsupported document
+  type or the article-page size limit; `500` for internal failures.
+  Keep invalid selectors, no match and upstream failures distinguishable by
+  their messages. A failed preview must
   not display a previous result as if it succeeded.
 - Provide an article URL input and an explicit Preview action beside the draft
   selectors in feed editing. Preview uses the current draft selectors and
@@ -142,16 +174,26 @@ These are planned additions, not implemented endpoints.
 ## Acceptance criteria
 
 1. An existing feed starts with empty rules. Saving valid selectors survives
-   reload; clearing the body selector disables extraction. Invalid syntax
+   reload; clearing a previously saved selector sends an explicit empty string
+   and remains empty after reloading. A whitespace-only body edit also disables
+   extraction; an untouched field is omitted. Invalid syntax
    returns an error and preserves the previously saved values.
 2. Preview a controlled HTML page with paragraphs, code, a table, an image and
    relative links. It includes the selected body, excludes advertising and
    related content, preserves formatting and uses the final URL as the link
-   base. Multiple/nested matches do not duplicate text. Previewing unsaved
-   rules or changing the proxy does not save either setting or article data.
+   base. Direct root matches for `table` and `ul` preserve those root elements
+   in both extracted HTML and rendered preview. Multiple/nested matches do not
+   duplicate text or follow the selector-list order instead of document order.
+   Previewing unsaved rules or changing the proxy does not save either setting
+   or article data.
 3. Invalid selectors, no match, excluded/empty results and origin failures show
    distinct failure outcomes without stale preview content. Executable markup
    cannot run in preview; ordinary article sanitization remains unchanged.
+   A slow origin produces a readable `502` before the server write deadline,
+   rather than a connection-only failure. A declared GBK/GB2312 fixture, including
+   a meta-declared case without an HTTP charset, extracts and previews correct
+   Chinese. A response exactly at the size limit remains eligible; a larger
+   response fails explicitly, and a configured pull retains RSS content for it.
 4. A configured feed returns one known article, duplicate entries for one new
    article and another new article. Known entries cause no article requests;
    each distinct new entry is attempted once. Successful extracted HTML is
@@ -161,8 +203,11 @@ These are planned additions, not implemented endpoints.
    existing articles or trigger historical work. Database lookup/save errors
    do not become successful empty results or bypass identity checks.
 6. Under a controlled deadline, requests stop when the existing attempt budget
-   expires and unfinished new articles retain their RSS body. Process/request
-   cancellation stops work promptly. Origin extraction failures do not advance
+   expires and unfinished new articles retain their RSS body. Include a batch
+   large/slow enough for only part to finish: persist all distinct new rows,
+   log the skipped/fallback count, and verify the next pull does not backfill
+   those bodies. Process/request cancellation stops work promptly.
+   Origin extraction failures do not advance
    RSS failure counters; normal new-item counts and signals remain correct.
 7. A newly saved extracted article renders in the existing reader and supplies
    that same body to translation/summary preparation and new bookmark/share
