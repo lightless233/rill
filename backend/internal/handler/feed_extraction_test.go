@@ -391,6 +391,74 @@ func TestPreviewFeedExtractionUsesDraftAndSavedProxy(t *testing.T) {
 	})
 }
 
+func TestPreviewFeedExtractionDeadlineAfterDownloadDuringParsing(t *testing.T) {
+	articleBody := "<html><body><article id=\"body\">" +
+		strings.Repeat("<p>Long article paragraph.</p>", 60000) +
+		"</article></body></html>"
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, articleBody)
+	}))
+	defer origin.Close()
+
+	h, st, r, cookie := newPreviewTestHandler(t, &config.Config{PullTimeout: 5})
+	h.previewTimeout = 40 * time.Millisecond
+
+	group, err := st.CreateGroup("G")
+	if err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	feed, err := st.CreateFeed(group.ID, "Feed", "https://example.com/feed", "", "", nil)
+	if err != nil {
+		t.Fatalf("CreateFeed() failed: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(r)
+	server.Config.WriteTimeout = 500 * time.Millisecond
+	server.Start()
+	defer server.Close()
+
+	payload, err := json.Marshal(map[string]string{
+		"url": origin.URL + "/article", "content_selector": "#body",
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("%s/api/feeds/%d/extraction/preview", server.URL, feed.ID),
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	started := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("preview request failed at connection level: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	t.Logf("work_budget=40ms elapsed=%s HTTP_status=%d body_bytes=%d", time.Since(started), resp.StatusCode, len(body))
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", resp.StatusCode, body)
+	}
+	var envelope previewExtractionEnvelope
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("decode response: %v (body: %s)", err, body)
+	}
+	if envelope.Error == "" {
+		t.Fatalf("expected a structured error, got %s", body)
+	}
+}
+
 func TestPreviewFeedExtractionSlowOriginReturns502BeforeWriteTimeout(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)

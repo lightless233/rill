@@ -106,6 +106,10 @@ func (h *Handler) previewFeedExtraction(c *gin.Context) {
 		h.writePreviewError(c, ctx, err)
 		return
 	}
+	if err := ctx.Err(); err != nil {
+		h.writePreviewError(c, ctx, err)
+		return
+	}
 
 	dataResponse(c, previewFeedExtractionResponse{
 		Content: result.Content,

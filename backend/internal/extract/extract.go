@@ -100,12 +100,18 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		if isHTTPPolicyError(err) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
 	defer resp.Body.Close()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("%w: HTTP %d", ErrUpstream, resp.StatusCode)
@@ -118,10 +124,16 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxArticleBytes+1))
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %v", ErrUpstream, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if int64(len(body)) > MaxArticleBytes {
 		return nil, ErrTooLarge
@@ -129,11 +141,20 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 
 	decoded, err := charset.NewReader(bytes.NewReader(body), contentType)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: decode: %v", ErrUpstream, err)
 	}
 	doc, err := goquery.NewDocumentFromReader(decoded)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: parse: %v", ErrUpstream, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	doc.Find("script, style, noscript").Remove()
@@ -142,6 +163,9 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	matches := doc.FindMatcher(contentMatcher)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if matches.Length() == 0 {
 		return nil, ErrNoMatch
 	}
@@ -152,6 +176,9 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 	}
 	base, err := url.Parse(finalURL)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("%w: final url: %v", ErrUpstream, err)
 	}
 
@@ -161,6 +188,10 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 		buildErr error
 	)
 	matches.EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+		if err := ctx.Err(); err != nil {
+			buildErr = err
+			return false
+		}
 		if len(selection.Nodes) == 0 {
 			return true
 		}
@@ -177,7 +208,11 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 		resolveRelativeURLs(selection, base)
 		outer, err := goquery.OuterHtml(selection)
 		if err != nil {
-			buildErr = fmt.Errorf("serialize extracted content: %w", err)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				buildErr = ctxErr
+			} else {
+				buildErr = fmt.Errorf("serialize extracted content: %w", err)
+			}
 			return false
 		}
 		retained = append(retained, node)
@@ -187,10 +222,16 @@ func Article(ctx context.Context, opts Options) (*Result, error) {
 	if buildErr != nil {
 		return nil, buildErr
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	content := strings.Join(parts, "\n")
 	if strings.TrimSpace(content) == "" {
 		return nil, ErrEmptyContent
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return &Result{Content: content, FinalURL: finalURL}, nil
 }

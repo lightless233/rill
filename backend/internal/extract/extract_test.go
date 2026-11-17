@@ -237,6 +237,33 @@ func TestArticleContextCancellation(t *testing.T) {
 	}
 }
 
+func TestArticleDeadlineAfterDownloadDuringParsing(t *testing.T) {
+	body := "<html><body><article id=\"body\">" +
+		strings.Repeat("<p>Long article paragraph.</p>", 60000) +
+		"</article></body></html>"
+	server := newArticleServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, body)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	result, err := Article(ctx, Options{
+		URL:             server.URL + "/article",
+		ContentSelector: "#body",
+		AllowPrivate:    true,
+		Timeout:         time.Second,
+	})
+	t.Logf("elapsed=%s body_bytes=%d context_err=%v extraction_err=%v", time.Since(started), len(body), ctx.Err(), err)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expired extraction returned success or wrong error: result=%v err=%v", result != nil, err)
+	}
+	if result != nil {
+		t.Fatal("expired extraction returned content")
+	}
+}
+
 func TestArticleSizeLimit(t *testing.T) {
 	prefix := `<html><body><div id="body">ok</div><!--`
 	suffix := `--></body></html>`

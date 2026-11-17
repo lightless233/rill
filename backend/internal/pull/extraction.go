@@ -74,6 +74,15 @@ func (p *Puller) prepareItemInputs(
 				Timeout:         p.timeout,
 			})
 			if err == nil {
+				if parentCtx.Err() != nil {
+					return nil, parentCtx.Err()
+				}
+				if attemptCtx.Err() != nil {
+					extractionStopped = true
+					fallbacks++
+					deadlineFallbacks++
+					break
+				}
 				content = result.Content
 				extracted++
 				break
