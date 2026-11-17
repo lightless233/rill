@@ -1,13 +1,11 @@
-# Contributing to Fusion
+# Contributing to Rill
 
-Thanks for your interest in Fusion.
+Thanks for your interest in Rill.
 
-Fusion is maintained by a small team working closely with coding agents, and
-the sustainable way to contribute is [issues](https://github.com/0x2E/fusion/issues):
-report bugs, propose features, or ask questions there. There is no need to
-open pull requests.
+Use [issues](https://github.com/lightless233/rill/issues) to report bugs,
+propose features, or ask questions.
 
-Fusion values simple, maintainable changes over complex abstractions.
+Rill values simple, maintainable changes over complex abstractions.
 
 ## 1. Reporting problems
 
