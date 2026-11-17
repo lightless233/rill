@@ -26,6 +26,8 @@ The user confirmed:
   article/source are required.
 - Schedule inside the application. Do not use system cron or an external
   scheduler service.
+- Do not automatically backfill missed reports. Application startup, restart
+  and enabling the feature must not trigger historical generation.
 
 This work delivers the Spec and Plan first; it does not authorize implementation
 or deployment.
@@ -76,22 +78,20 @@ or deployment.
 
 ## Scheduling and generation lifecycle
 
-The following operational choices are proposed to keep automatic AI work
-explicit and bounded:
+Scheduling follows the no-backfill requirement above. The enable switch and
+failure-retry policy below remain proposed operational choices:
 
 - Add one persistent Daily reports enable switch, initially off. Reuse the
   existing AI settings; enabling reports requires a configured AI key. This
   keeps an existing AI-enabled development instance from silently starting
   scheduled billable work just because it was upgraded.
-- On enable, record yesterday as the first eligible window start/report date.
-  At or after today's 08:00, that window has closed and its report is due
-  immediately; before 08:00, wait until its end boundary at 08:00. Do not
-  generate a partial window or scan all historical articles on first activation.
-- During an enabled period, recover missed due dates after a restart and
-  process them serially. Prefer the most recent due report, then older missing
-  dates. Disabling stops scheduling new work; an already running attempt may
-  finish. Re-enabling starts a new eligible period without retroactively
-  generating days when the feature was disabled. Existing reports remain.
+- On enable or startup, schedule the next future 08:00. Enabling before 08:00
+  allows that morning's run; enabling or restarting after 08:00 waits until the
+  following morning. Do not immediately generate the latest missed window.
+- If the process was stopped or the feature disabled at a scheduled time, skip
+  that run. Do not enumerate missing dates, create a backlog or fill gaps in the
+  report list. Disabling stops scheduling new work; an already running attempt
+  may finish. Existing reports remain readable after disable/re-enable.
 - There is at most one active generation job in the application. Persist a
   unique report record for each covered date and its generation state. Repeated
   scheduler ticks, requests and restarts must not create duplicate reports.
@@ -99,14 +99,14 @@ explicit and bounded:
   successfully persisted body is ready. Missing AI configuration for nonempty
   work, upstream errors, incomplete batches and persistence failures are
   failures, not empty reports.
-- Allow an initial automatic attempt and one retry after 15 minutes. Persist
-  the attempt budget so restarts cannot create unlimited retries. After that,
-  show a failed report with an explicit Retry action; one manual retry requests
-  one further attempt. Do not automatically regenerate a ready report.
-- Recover interrupted running attempts after restart using the remaining
-  automatic attempt budget, or expose failure for manual retry if exhausted.
-  Network calls may have incurred cost before an interruption; persisted
-  uniqueness does not promise exactly-once billing by the AI provider.
+- Allow an initial scheduled attempt and one retry after 15 minutes in the
+  same process run. A restart does not replay a pending automatic retry. After
+  failure, show an explicit Retry action; one manual retry requests one further
+  attempt. Do not automatically regenerate a ready report.
+- On restart, mark unfinished jobs as interrupted/failed for explicit manual
+  retry; do not resume their AI requests automatically. Network calls may have
+  incurred cost before interruption; persisted uniqueness does not promise
+  exactly-once billing by the AI provider.
 - Freeze the candidate set for an attempt before screening. Normal
   source mutations do not rewrite a ready report. A failed attempt may select
   from the currently available data again; record its actual candidate and
@@ -154,12 +154,24 @@ explicit and bounded:
   email, report editing, force-regeneration, web research or external cron.
 - No generic job framework, distributed scheduling, vector database, embeddings,
   new AI SDK or second sharing system. The scope is one application instance.
+- No automatic historical backfill or historical-report generation UI/API.
+  Retrying a report that actually failed is separate from creating a report
+  for a scheduled run that never happened.
 - No new framework or parser merely to render model Markdown; report content
   can use structured model output and application-generated safe article HTML.
-- The local resource cost is bounded text/SQLite processing; model inference
-  remains at the configured provider. API cost scales with input volume and
-  reduction requests. Do not promise a fixed daily price without measuring the
-  chosen model and actual workload.
+- Local work is text/SQLite processing; model inference remains at the
+  configured provider. Batch limits bound individual requests and working
+  memory, not a report's total request count or total runtime. Do not describe
+  these limits as a complete automatic-spending budget or promise a fixed price.
+
+## Open decision: per-report work budget
+
+The maximum candidate/screening workload, total AI requests, total elapsed time
+and the outcome when a report exceeds its budget are not yet agreed. Removing
+backfill removes the historical backlog, but does not settle this separate
+large-window concern. Resolve it before implementing automatic generation;
+do not silently choose an article cap, discard candidates or add a confirmation
+workflow on the user's behalf.
 
 ## Acceptance criteria
 
@@ -170,8 +182,10 @@ explicit and bounded:
    report. Crossing midnight does not split this window, regardless of publisher
    date or unread status. Eligibility does not force final editorial inclusion.
 2. Repeated wakeups and concurrent retry requests do not duplicate a report or
-   run multiple AI jobs. Restart catches up eligible dates, respects activation
-   boundaries/retry budgets, and does not regenerate ready reports.
+   run multiple AI jobs. Restart after one or many missed days, or enable after
+   08:00, makes no historical AI calls and schedules only the next future 08:00.
+   Interrupted jobs remain failed until manually retried; ready reports are
+   never automatically regenerated.
 3. A multi-batch candidate pool containing important stories, repeated coverage
    and low-value articles produces a grounded, prioritized Chinese report.
    Important items can be selected even beyond the first page/batch; low-value

@@ -34,7 +34,7 @@ Reuse these existing paths:
 Only report-specific editorial screening, synthesis and job state are new.
 Do not add parallel AI transport, parsing, sharing, scheduling or UI infrastructure.
 
-## T1 — Persist reports, selection windows and activation state
+## T1 — Persist reports, selection windows and enable state
 
 Problem: article creation time is stored, but the current list query is a
 publication-date reader and there is no durable report/job record.
@@ -44,9 +44,9 @@ publication-date reader and there is no durable report/job record.
   source metadata, actual model, timestamps, attempt count and retry timing.
   Keep source references as report-owned snapshots rather than cascading
   foreign keys to live articles. Do not store AI keys in report records.
-- Add the persistent enable switch and activation boundary through the existing
-  settings path. Expose only user-relevant settings; internal scheduler progress
-  is not another user preference. Preserve ready reports across disable/enable.
+- Add the persistent enable switch through the existing settings path.
+  Do not add a first-eligible date, backfill cursor or missed-date inventory.
+  Preserve ready reports across disable/enable.
 - Add a dedicated creation-time window query and appropriate timestamp index.
   A report dated D covers `[D 08:00, D+1 08:00)` in Asia/Shanghai and becomes due
   at its end boundary. Convert those bounds to stored Unix timestamps for the
@@ -65,7 +65,7 @@ publication-date reader and there is no durable report/job record.
 
 Evidence: inclusive/exclusive 08:00 selection boundaries, articles on both sides
 of midnight, read/unread independence, creation versus publication dates, stable
-report date ordering, uniqueness/claim behavior, activation periods and state
+report date ordering, uniqueness/claim behavior, enable state and job state
 persistence are covered by focused store tests.
 
 ## T2 — Add grounded multi-source report synthesis
@@ -87,6 +87,10 @@ Depends on T1.
   for every input. Synthesize and reduce only the shortlisted material, allowing
   further editorial cuts. Keep generation serial to control memory, upstream
   concurrency and rate-limit pressure.
+- The per-report total-work budget and over-limit outcome remain open in the
+  Spec. Per-request batching is not a total API-cost or runtime limit. Finalize
+  that policy before implementing this generation unit; do not silently impose
+  a first-N cap or invent a historical backfill mechanism.
 - Use report-specific prompts for significance/information-value screening,
   duplicate-story consolidation, topical grouping, cross-source interpretation
   and citations. No per-feed quotas, mandatory article counts, persistent feed
@@ -118,7 +122,7 @@ and partial output. Verify no-input and successful zero-selection results remain
 distinct from failure. Existing summary/translation tests remain valid for the
 shared transport after any focused refactor.
 
-## T3 — Schedule and recover daily work inside the process
+## T3 — Schedule daily work inside the process without backfill
 
 Depends on T1/T2.
 
@@ -126,28 +130,32 @@ Depends on T1/T2.
   context as the HTTP server and puller. It owns automatic and manual jobs;
   retry handlers wake it instead of launching independent request goroutines.
 - Calculate consecutive 08:00 window boundaries and the next generation time
-  in Asia/Shanghai. A report becomes due only when its window has closed; keep
-  the start date as its stable identity for startup catch-up and retries. Ensure
+  in Asia/Shanghai. Startup and enabling arm only the next future 08:00; do not
+  turn a past closed window into an immediate job. Keep the window start date
+  as the stable report/retry identity. Ensure
   timezone data is available in the shipped binary/container: the current
   [Dockerfile](../../Dockerfile) does not install timezone data. Standard
   `time/tzdata` embedding avoids reliance on the development host's zone files.
 - Use a context-aware timer/wake loop, following the existing puller pattern,
-  to recheck settings, eligible dates and persisted jobs. Do not build a generic
-  scheduler or combine report timing with per-feed refresh intervals.
-- Respect enable/disable boundaries, initial activation, downtime catch-up,
-  one active job, ready-record immutability and the retry budget from the Spec.
-  Schedule the latest due report ahead of backlog; older failures must not
-  indefinitely prevent newer daily reports.
-- On startup reconcile interrupted jobs without resetting their attempt budget.
-  On cancellation, stop timers and model requests and leave recoverable state.
+  to handle the scheduled timer, settings changes and explicit manual retries.
+  Do not scan historical dates, build a generic scheduler or combine report
+  timing with per-feed refresh intervals.
+- Preserve one active job, ready-record immutability and the Spec's limited
+  same-process automatic failure retry. Missed scheduled runs are skipped, not
+  queued. There is no backlog priority or catch-up loop.
+- On startup mark unfinished jobs failed/interrupted without resuming work or
+  replaying their automatic retry timers. Only explicit manual retry can restart
+  them. On cancellation, stop timers and model requests and retain that state.
   Do not swallow worker failures as empty successful reports or crash the
   reader merely because an AI provider is unavailable.
 
 Evidence: deterministic clock/scheduler tests cover enabling before/at/after
 08:00 without generating partial windows, crossing midnight without an extra
-report, repeated wakeups, missed days, off periods, retry exhaustion and shutdown
-without waiting real hours. Exercise zone loading in the container build once;
-no system cron or new daemon is introduced.
+report, repeated wakeups, and restarts after both a short outage and a long
+outage without any historical AI requests. Cover disabled periods, interrupted
+jobs requiring manual retry, the same-process retry limit and shutdown without
+waiting real hours. Exercise zone loading in the container build once; no system
+cron or new daemon is introduced.
 
 ## T4 — Expose authenticated report reads/retries and extend sharing
 
