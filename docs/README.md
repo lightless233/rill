@@ -57,3 +57,7 @@
   report reading and snapshot sharing
 - [006 Plan](plans/006-2026-11-17-daily-reports.md): reuse of AI transport,
   in-process scheduling and article sharing for daily reports
+- [007 Spec](specs/007-2026-11-17-feed-content-extraction.md): per-feed CSS body
+  and exclusion selectors, preview and extraction of newly pulled articles
+- [007 Plan](plans/007-2026-11-17-feed-content-extraction.md): reuse of HTTP,
+  goquery, feed editing and canonical article insertion
