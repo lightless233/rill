@@ -100,9 +100,8 @@ application release number.
 
 Commit the accepted changes before creating a release tag. Build from that
 tagged, clean checkout with the existing scripts, then push the branch and the
-specific tag. [The release workflow](.github/workflows/release.yml) tests and
-builds a draft GitHub Release; publishing and production deployment remain
-separate actions.
+specific tag when authorized. GitHub Releases, container images, and production
+deployments are published manually.
 
 [scripts/version.sh](scripts/version.sh) resolves the tag/commit identity and
 marks tracked local modifications as dirty. [scripts.sh](scripts.sh) injects it
