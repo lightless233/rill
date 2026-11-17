@@ -1,4 +1,4 @@
-# Fusion Backend Design
+# Rill Backend Design
 
 ## 1. Goals
 
@@ -8,7 +8,7 @@
 
 ## 2. Runtime architecture
 
-Fusion backend runs two long-lived services in one process:
+Rill backend runs two long-lived services in one process:
 
 1. HTTP API server (Gin)
 2. Feed pull worker (periodic and manual refresh)

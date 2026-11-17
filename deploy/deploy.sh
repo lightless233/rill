@@ -39,7 +39,7 @@ while [ $# -gt 0 ]; do
       cat <<'EOF'
 Usage: ./deploy/deploy.sh [--tag TAG] [--allow-dirty] [--skip-build] [--backup-db]
 
-Builds the Fusion binary + Docker image for linux/amd64 (configurable via
+Builds the Rill binary + Docker image for linux/amd64 (configurable via
 DEPLOY_PLATFORM), streams the image over SSH to DEPLOY_REMOTE_DIR,
 updates compose.yaml and RILL_IMAGE in remote .env,
 and waits until the container reports healthy.
