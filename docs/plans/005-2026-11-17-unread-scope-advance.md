@@ -22,13 +22,30 @@ Change:
 - Distinguish the existing mark-read action from the new navigation action
   using the current scope, filter, scope unread count and loaded unread count.
   Reuse `getScopeUnreadCount` rather than adding another counting rule.
-- Only offer the new action in scoped Unread views after feed and group
-  metadata is available successfully. Use the query states already exposed by
-  `useFeedLookup` and `useGroups`; defaulted empty arrays are not evidence of
-  zero unread. Preserve existing pending-state disabling for mark-read work.
+- Update the primary button's `disabled` condition as well as its click
+  handler. Keep the existing `canMarkAllRead` eligibility and combine it with
+  the new navigation eligibility:
+
+  ```ts
+  canAdvance = scopedUnread && metadataReady &&
+    scopeUnreadCount === 0 && unreadCount === 0;
+  disabled = isMarkingRead || !(canMarkAllRead || canAdvance);
+  ```
+
+  Here `scopedUnread` means the Unread tab with a selected feed or group.
+  `metadataReady` requires successful feeds and groups queries and an existing
+  current scope: the selected feed is present in feeds, or the selected group
+  is present in groups. Read success states from `useFeedLookup` and
+  `useGroups`, including the groups success state in feed scope because feed
+  ordering also depends on groups. Defaulted empty arrays or a missing scope
+  are not evidence of zero unread. These gates apply to navigation, not to the
+  existing mark-read eligibility.
+- Do not require another unread candidate for `canAdvance`: the existing
+  `/all` fallback is also an enabled navigation outcome. Preserve
+  `isMarkingRead` disabling for both primary actions.
 - Keep the existing mark-all handler for scopes that still have unread items.
   Branch to navigation before entering that mutation/confirmation/undo flow
-  when both unread counts are zero.
+  only when `canAdvance` is true.
 - Reuse `resolveNextUnreadTarget` from
   [unread-navigation.ts](../../frontend/src/lib/unread-navigation.ts).
   For this mutation-free click, use the current feeds snapshot for both of its
@@ -43,7 +60,9 @@ Change:
   zero, and do not change drawer auto-mark-read behavior.
 - Render localized feed/group navigation labels and an appropriate existing
   icon in the primary button. Reuse the current Button and dropdown; leave
-  generated UI component source unchanged. No extra explanation or controls.
+  generated UI component source unchanged. Keep the same navigation label when
+  the destination is the `/all` fallback; this known wording trade-off does not
+  require a third button state. No extra explanation or controls.
 
 Completion evidence: the single-article report can be followed through the
 real header button to another unread scope without an extra read mutation;
@@ -58,10 +77,17 @@ Depends on T1.
   for an already-zero source scope using the same before/after snapshot where
   existing cases do not cover that input. Do not duplicate the existing matrix
   or add tests that only assert translated strings.
+- Cover primary-button availability as well as destination resolution:
+  zero-unread navigation is unavailable while feeds/groups metadata is pending
+  or failed, or the successful data lacks the current scope; it becomes
+  available after valid recovery. Existing mark-read pending states disable
+  the button, and absence of another candidate does not disable the fallback.
 - Perform one bounded local UI check of the single-article flow, including
   the dynamic label, click, resulting route, and absence of a mark-read request
-  on the navigation click. Cover the analogous group/empty-list case and the
-  return to mark-read mode after toggling an article unread. Confirm the
+  on the navigation click. Mark the article read manually, or explicitly enable
+  auto-mark-read for the check and restore the original setting afterward;
+  do not assume opening alone marks it read. Cover the group/empty-list case
+  and the return to mark-read mode after toggling an article unread. Confirm the
   existing All/Starred/global behavior is preserved. User-provided acceptance
   counts as evidence for the cases it covers; do not repeat successful checks
   without a relevant change.
