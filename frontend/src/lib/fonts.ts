@@ -4,6 +4,7 @@ export const latinFontOptions = [
   "geist",
   "inter",
   "source-sans-3",
+  "oppo-sans",
   "system-sans",
   "newsreader",
   "source-serif-4",
@@ -60,6 +61,12 @@ export const LATIN_FONT_OPTIONS: readonly FontOptionMeta<LatinFont>[] = [
     category: "sans",
     family: '"Source Sans 3 Variable"',
     label: "Source Sans 3",
+  },
+  {
+    value: "oppo-sans",
+    category: "sans",
+    family: '"OPPO Sans 4.0"',
+    label: "OPPO Sans 4.0",
   },
   {
     value: "system-sans",
@@ -230,6 +237,7 @@ const FONT_CSS_LOADERS: Record<string, () => Promise<unknown>> = {
       import("@fontsource-variable/jetbrains-mono/wght-italic.css"),
     ]),
   "mono:fira-code": () => import("@fontsource-variable/fira-code"),
+  "latin:oppo-sans": () => import("./oppo-sans.css"),
   "cjk:noto-sans-sc": () => import("@fontsource-variable/noto-sans-sc"),
   "cjk:oppo-sans": () => import("./oppo-sans.css"),
   "cjk:noto-serif-sc": () => import("@fontsource-variable/noto-serif-sc"),

@@ -235,7 +235,7 @@ func TestUpdateSettingsCustomPageSize(t *testing.T) {
 func TestUpdateSettingsOPPOSansRoundTrip(t *testing.T) {
 	r, cookie := newSettingsTestRouter(t)
 
-	w := performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(`{"cjk_font":"oppo-sans"}`), nil, cookie)
+	w := performRequest(r, http.MethodPatch, "/api/settings", strings.NewReader(`{"latin_font":"oppo-sans","cjk_font":"oppo-sans"}`), nil, cookie)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH OPPO Sans: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -245,8 +245,11 @@ func TestUpdateSettingsOPPOSansRoundTrip(t *testing.T) {
 		t.Fatalf("GET settings: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	settings := decodeSettings(t, w).Data
+	if settings.LatinFont == nil || *settings.LatinFont != "oppo-sans" {
+		t.Fatalf("expected persisted OPPO Sans Latin selection, got %+v", settings.LatinFont)
+	}
 	if settings.CJKFont == nil || *settings.CJKFont != "oppo-sans" {
-		t.Fatalf("expected persisted OPPO Sans selection, got %+v", settings.CJKFont)
+		t.Fatalf("expected persisted OPPO Sans CJK selection, got %+v", settings.CJKFont)
 	}
 }
 

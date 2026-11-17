@@ -24,6 +24,7 @@ var (
 		"geist",
 		"inter",
 		"source-sans-3",
+		"oppo-sans",
 		"system-sans",
 		"newsreader",
 		"source-serif-4",

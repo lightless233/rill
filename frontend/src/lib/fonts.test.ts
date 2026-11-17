@@ -35,6 +35,19 @@ describe("article font catalog & stacks", () => {
     expect(systemSerif?.family).not.toContain("-apple-system");
   });
 
+  it("offers OPPO Sans as both a Latin and CJK choice", () => {
+    const latin = LATIN_FONT_OPTIONS.find((font) => font.value === "oppo-sans");
+    const cjk = CJK_FONT_OPTIONS.find((font) => font.value === "oppo-sans");
+
+    expect(latin?.family).toContain("OPPO Sans 4.0");
+    expect(cjk?.family).toContain("OPPO Sans 4.0");
+    expect(
+      resolveArticleBodyFontFamily("oppo-sans", "system").startsWith(
+        '"OPPO Sans 4.0"',
+      ),
+    ).toBe(true);
+  });
+
   it("puts monospace first, preserves CJK fallback, and ends with monospace generic", () => {
     const monoStack = resolveArticleMonoFontFamily("jetbrains-mono", "lxgw-wenkai");
 
