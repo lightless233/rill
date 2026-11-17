@@ -49,3 +49,7 @@
   feed-change signals and live unread counts
 - [004 Plan](plans/004-2026-11-16-live-unread-counts.md): implementation units
   and acceptance for live unread counts
+- [005 Spec](specs/005-2026-11-17-unread-scope-advance.md): explicit navigation
+  after a feed or group reaches zero unread
+- [005 Plan](plans/005-2026-11-17-unread-scope-advance.md): reuse of unread
+  navigation and focused regression acceptance
