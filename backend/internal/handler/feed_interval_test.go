@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/0x2E/fusion/internal/buildinfo"
 	"github.com/0x2E/fusion/internal/config"
 	"github.com/0x2E/fusion/internal/store"
 	"github.com/gin-gonic/gin"
@@ -169,5 +170,8 @@ func TestGetAppInfo(t *testing.T) {
 	}
 	if res.Data.PullInterval != 1800 {
 		t.Fatalf("expected pull_interval 1800, got %d", res.Data.PullInterval)
+	}
+	if res.Data.Version != buildinfo.Version || res.Data.Commit != buildinfo.Commit {
+		t.Fatalf("unexpected build identity: version=%q commit=%q", res.Data.Version, res.Data.Commit)
 	}
 }

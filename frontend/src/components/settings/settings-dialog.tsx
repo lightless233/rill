@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAppInfo } from "@/queries/app";
 import { toast } from "sonner";
 import {
   Bug,
@@ -895,6 +896,7 @@ function TranslationContent() {
 
 function AboutContent() {
   const { t } = useI18n();
+  const appInfo = useAppInfo();
   const { isInstallAvailable, promptInstall } = usePWAInstall();
   const [isInstalling, setIsInstalling] = useState(false);
 
@@ -921,7 +923,17 @@ function AboutContent() {
       />
       <div className="text-center">
         <h3 className="text-xl font-semibold">Rill</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{__APP_VERSION__}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {appInfo.isError ? (
+            <Button variant="link" size="xs" onClick={() => void appInfo.refetch()}>
+              {t("common.retry")}
+            </Button>
+          ) : appInfo.data ? (
+            `${appInfo.data.version} · ${appInfo.data.commit}`
+          ) : (
+            "…"
+          )}
+        </p>
         <p className="mt-1.5 text-sm text-muted-foreground">
           {t("settings.about.description")}
         </p>

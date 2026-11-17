@@ -31,7 +31,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # for vite extracting git tag/hash
+          fetch-depth: 0 # for build tag/commit metadata
       - name: Normalize repository name
         run: echo "REPOSITORY=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - name: Docker meta

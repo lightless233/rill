@@ -86,3 +86,23 @@ the relevant final checks before committing.
 - Avoid over-engineering.
 - Add comments only for non-obvious logic or decisions.
 - Keep docs and API behavior aligned when changing contracts.
+
+## 5. Release versions
+
+Annotated Git tags named `vMAJOR.MINOR.PATCH` are the release-version source of
+truth. Use PATCH for fixes and MINOR for features; reserve a MAJOR release for
+breaking changes, and `v1.0.0` for the first stable release. Published tags must
+not be moved or overwritten. The private frontend package version is not an
+application release number.
+
+Commit the accepted changes before creating a release tag. Build from that
+tagged, clean checkout with the existing scripts, then push the branch and the
+specific tag. [The release workflow](.github/workflows/release.yml) tests and
+builds a draft GitHub Release; publishing and production deployment remain
+separate actions.
+
+[scripts/version.sh](scripts/version.sh) resolves the tag/commit identity and
+marks tracked local modifications as dirty. [scripts.sh](scripts.sh) injects it
+into the backend. The binary's `--version`, startup log and
+[application-info handler](backend/internal/handler/feed.go) expose the same
+identity; the About screen reads it from the running server.

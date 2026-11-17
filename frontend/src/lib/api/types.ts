@@ -374,6 +374,8 @@ export interface ShareProtectedResponse {
 export type ShareAccessResponse = ShareContentResponse | ShareProtectedResponse;
 
 export interface AppInfoResponse {
+  version: string;
+  commit: string;
   pull_interval: number;
   allowed_refresh_intervals: number[];
   refresh_all_running: boolean;

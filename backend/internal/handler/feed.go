@@ -11,6 +11,7 @@ import (
 
 	"log/slog"
 
+	"github.com/0x2E/fusion/internal/buildinfo"
 	"github.com/0x2E/fusion/internal/extract"
 	"github.com/0x2E/fusion/internal/pkg/httpc"
 	"github.com/0x2E/fusion/internal/pull"
@@ -54,6 +55,8 @@ type validateFeedResponse struct {
 }
 
 type appInfoResponse struct {
+	Version                 string  `json:"version"`
+	Commit                  string  `json:"commit"`
 	PullInterval            int     `json:"pull_interval"`
 	AllowedRefreshIntervals []int64 `json:"allowed_refresh_intervals"`
 	RefreshAllRunning       bool    `json:"refresh_all_running"`
@@ -110,6 +113,8 @@ func (h *Handler) getAppInfo(c *gin.Context) {
 	}
 
 	dataResponse(c, appInfoResponse{
+		Version:                 buildinfo.Version,
+		Commit:                  buildinfo.Commit,
 		PullInterval:            h.config.PullInterval,
 		AllowedRefreshIntervals: allowedRefreshIntervals,
 		RefreshAllRunning:       h.isRefreshAllRunning(),

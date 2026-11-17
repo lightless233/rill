@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/0x2E/fusion/internal/buildinfo"
 	"github.com/0x2E/fusion/internal/config"
 	"github.com/0x2E/fusion/internal/eventhub"
 	"github.com/0x2E/fusion/internal/handler"
@@ -23,6 +26,13 @@ import (
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "Print version and commit, then exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Printf("Rill %s (%s)\n", buildinfo.Version, buildinfo.Commit)
+		return
+	}
+
 	if err := run(); err != nil {
 		slog.Error("fatal", "error", err)
 		os.Exit(1)
@@ -72,7 +82,7 @@ func run() error {
 	g, ctx := errgroup.WithContext(sigCtx)
 
 	g.Go(func() error {
-		slog.Info("starting server", "address", addr)
+		slog.Info("starting server", "address", addr, "version", buildinfo.Version, "commit", buildinfo.Commit)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}

@@ -58,12 +58,16 @@ build_backend() {
 
   echo "building backend for OS: ${target_os}, Arch: ${target_arch}, Output: ${output_path}"
 
+  version=$(sh "$root/scripts/version.sh" version)
+  commit=$(sh "$root/scripts/version.sh" commit)
+  version_package="github.com/0x2E/fusion/internal/buildinfo"
+
   mkdir -p "$(dirname "$output_path")"
   (
     cd backend
     CGO_ENABLED=0 GOOS=${target_os} GOARCH=${target_arch} go build \
       -trimpath \
-      -ldflags '-extldflags "-static"' \
+      -ldflags "-extldflags \"-static\" -X ${version_package}.Version=${version} -X ${version_package}.Commit=${commit}" \
       -o "$output_path" \
       ./cmd/fusion
   )
