@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { AlertCircle, ChevronDown, Save, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, ChevronDown, Eye, Loader2, Save, Trash2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +30,11 @@ import {
 } from "@/components/ui/tooltip";
 import { useUIStore } from "@/store";
 import { useGroups } from "@/queries/groups";
-import { useUpdateFeed, useDeleteFeed } from "@/queries/feeds";
+import { useUpdateFeed, useDeleteFeed, usePreviewFeedExtraction } from "@/queries/feeds";
 import { useAppInfo } from "@/queries/app";
-import type { Feed, UpdateFeedRequest } from "@/lib/api";
+import { processArticleContent } from "@/lib/content";
+import { feedSelectorUpdate } from "@/lib/feed-extraction";
+import type { Feed, PreviewFeedExtractionResponse, UpdateFeedRequest } from "@/lib/api";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -79,6 +81,7 @@ function EditFeedDialogForm({
   const { data: groups = [] } = useGroups();
   const updateFeedMutation = useUpdateFeed();
   const deleteFeedMutation = useDeleteFeed();
+  const previewMutation = usePreviewFeedExtraction();
 
   // NULL (or a legacy 0) stays "untouched" (empty): the Select shows the
   // live global fallback, and an untouched save sends nothing.
@@ -88,12 +91,28 @@ function EditFeedDialogForm({
   const [name, setName] = useState(editingFeed.name);
   const [groupId, setGroupId] = useState<string>(editingFeed.group_id.toString());
   const [proxy, setProxy] = useState(editingFeed.proxy ?? "");
+  const [contentSelector, setContentSelector] = useState(
+    editingFeed.content_selector ?? "",
+  );
+  const [excludeSelector, setExcludeSelector] = useState(
+    editingFeed.exclude_selector ?? "",
+  );
+  const [previewURL, setPreviewURL] = useState("");
+  const [previewResult, setPreviewResult] =
+    useState<PreviewFeedExtractionResponse | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const previewRequestID = useRef(0);
+  const previewAbortRef = useRef<AbortController | null>(null);
   const [suspended, setSuspended] = useState(editingFeed.suspended);
   const [refreshInterval, setRefreshInterval] = useState<string>(
     storedInterval && storedInterval > 0 ? storedInterval.toString() : "",
   );
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(
-    !!editingFeed.proxy || storedInterval != null,
+    !!editingFeed.proxy ||
+      storedInterval != null ||
+      !!editingFeed.content_selector ||
+      !!editingFeed.exclude_selector,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -113,6 +132,90 @@ function EditFeedDialogForm({
     globalPullInterval,
     appInfo?.allowed_refresh_intervals ?? FALLBACK_REFRESH_INTERVALS,
   );
+
+  const renderedPreview = useMemo(
+    () =>
+      previewResult
+        ? processArticleContent(previewResult.content, previewResult.url)
+        : "",
+    [previewResult],
+  );
+
+  useEffect(() => {
+    return () => {
+      previewAbortRef.current?.abort();
+    };
+  }, []);
+
+  const resetPreview = () => {
+    previewRequestID.current += 1;
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    previewMutation.reset();
+    setIsPreviewing(false);
+    setPreviewResult(null);
+    setPreviewError(null);
+  };
+
+  const updatePreviewInput = (
+    setter: (value: string) => void,
+    value: string,
+  ) => {
+    setter(value);
+    resetPreview();
+  };
+
+  const handlePreview = async () => {
+    const trimmedURL = previewURL.trim();
+    const trimmedContentSelector = contentSelector.trim();
+    if (!trimmedURL) {
+      setPreviewError(t("feed.edit.previewUrlRequired"));
+      return;
+    }
+    if (!trimmedContentSelector) {
+      setPreviewError(t("feed.edit.contentSelectorRequired"));
+      return;
+    }
+
+    previewAbortRef.current?.abort();
+    const requestID = previewRequestID.current + 1;
+    previewRequestID.current = requestID;
+    const controller = new AbortController();
+    previewAbortRef.current = controller;
+    setIsPreviewing(true);
+    setPreviewResult(null);
+    setPreviewError(null);
+
+    try {
+      const result = await previewMutation.mutateAsync({
+        feedId: editingFeed.id,
+        data: {
+          url: trimmedURL,
+          content_selector: trimmedContentSelector,
+          exclude_selector: excludeSelector.trim(),
+          proxy: proxy.trim(),
+        },
+        signal: controller.signal,
+      });
+      if (previewRequestID.current !== requestID || controller.signal.aborted) {
+        return;
+      }
+      setPreviewResult(result);
+    } catch (error) {
+      if (previewRequestID.current !== requestID || controller.signal.aborted) {
+        return;
+      }
+      setPreviewError(
+        error instanceof Error
+          ? error.message
+          : t("feed.edit.previewFailed"),
+      );
+    } finally {
+      if (previewRequestID.current === requestID) {
+        setIsPreviewing(false);
+      }
+    }
+  };
 
   const handleClose = () => {
     onClose();
@@ -155,6 +258,22 @@ function EditFeedDialogForm({
       const newProxy = proxy.trim() || undefined;
       if (newProxy !== editingFeed.proxy) {
         request.proxy = newProxy;
+      }
+
+      const contentSelectorUpdate = feedSelectorUpdate(
+        editingFeed.content_selector,
+        contentSelector,
+      );
+      if (contentSelectorUpdate !== undefined) {
+        request.content_selector = contentSelectorUpdate;
+      }
+
+      const excludeSelectorUpdate = feedSelectorUpdate(
+        editingFeed.exclude_selector,
+        excludeSelector,
+      );
+      if (excludeSelectorUpdate !== undefined) {
+        request.exclude_selector = excludeSelectorUpdate;
       }
 
       // The global-interval entry means "follow the global setting" and is
@@ -382,7 +501,9 @@ function EditFeedDialogForm({
                     inputMode="url"
                     placeholder={t("feed.add.proxyPlaceholder")}
                     value={proxy}
-                    onChange={(e) => setProxy(e.target.value)}
+                    onChange={(e) =>
+                      updatePreviewInput(setProxy, e.target.value)
+                    }
                     className="h-10"
                     autoComplete="off"
                     spellCheck={false}
@@ -390,6 +511,122 @@ function EditFeedDialogForm({
                   <p className="text-xs text-muted-foreground">
                     {t("feed.add.proxyHint")}
                   </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="edit-feed-content-selector"
+                    className="text-[13px] font-medium"
+                  >
+                    {t("feed.edit.contentSelectorLabel")}
+                  </label>
+                  <Input
+                    id="edit-feed-content-selector"
+                    name="feed-content-selector"
+                    placeholder={t("feed.edit.contentSelectorPlaceholder")}
+                    value={contentSelector}
+                    onChange={(e) =>
+                      updatePreviewInput(setContentSelector, e.target.value)
+                    }
+                    className="h-10 font-mono text-sm"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("feed.edit.contentSelectorHint")}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="edit-feed-exclude-selector"
+                    className="text-[13px] font-medium"
+                  >
+                    {t("feed.edit.excludeSelectorLabel")}
+                  </label>
+                  <Input
+                    id="edit-feed-exclude-selector"
+                    name="feed-exclude-selector"
+                    placeholder={t("feed.edit.excludeSelectorPlaceholder")}
+                    value={excludeSelector}
+                    onChange={(e) =>
+                      updatePreviewInput(setExcludeSelector, e.target.value)
+                    }
+                    className="h-10 font-mono text-sm"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("feed.edit.excludeSelectorHint")}
+                  </p>
+                </div>
+                <div className="space-y-1.5 border-t pt-4">
+                  <label
+                    htmlFor="edit-feed-preview-url"
+                    className="text-[13px] font-medium"
+                  >
+                    {t("feed.edit.previewUrlLabel")}
+                  </label>
+                  <Input
+                    id="edit-feed-preview-url"
+                    name="feed-preview-url"
+                    type="url"
+                    inputMode="url"
+                    placeholder={t("feed.edit.previewUrlPlaceholder")}
+                    value={previewURL}
+                    onChange={(e) =>
+                      updatePreviewInput(setPreviewURL, e.target.value)
+                    }
+                    className="h-10"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <div className="flex items-start gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handlePreview()}
+                      disabled={
+                        isPreviewing ||
+                        !previewURL.trim() ||
+                        !contentSelector.trim()
+                      }
+                    >
+                      {isPreviewing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                      {isPreviewing
+                        ? t("feed.edit.previewing")
+                        : t("feed.edit.previewAction")}
+                    </Button>
+                    <p className="pt-1 text-xs text-muted-foreground">
+                      {t("feed.edit.previewHint")}
+                    </p>
+                  </div>
+                  {previewError && (
+                    <p
+                      role="alert"
+                      className="break-words text-xs text-destructive"
+                    >
+                      {previewError}
+                    </p>
+                  )}
+                  {previewResult && (
+                    <div className="space-y-2">
+                      <p className="text-[13px] font-medium">
+                        {t("feed.edit.previewResult")}
+                      </p>
+                      <div className="max-h-80 overflow-y-auto rounded-lg border bg-background p-3.5">
+                        <div
+                          className="typeset typeset-article"
+                          dangerouslySetInnerHTML={{
+                            __html: renderedPreview,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CollapsibleContent>
             </Collapsible>

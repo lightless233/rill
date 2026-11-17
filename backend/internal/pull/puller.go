@@ -300,15 +300,14 @@ func (p *Puller) pullFeed(parentCtx context.Context, feed *model.Feed) {
 		result.ExpiresAt,
 	)
 
-	inputs := make([]store.BatchCreateItemInput, 0, len(result.Items))
-	for _, item := range result.Items {
-		inputs = append(inputs, store.BatchCreateItemInput{
-			GUID:    item.GUID,
-			Title:   item.Title,
-			Link:    item.Link,
-			Content: item.Content,
-			PubDate: item.PubDate,
-		})
+	inputs, err := p.prepareItemInputs(parentCtx, attemptCtx, feed, result.Items)
+	if err != nil {
+		if parentCtx.Err() != nil {
+			p.logger.Debug("feed pull stopped by parent context", "feed_id", feed.ID, "feed_name", feed.Name, "error", parentCtx.Err())
+			return
+		}
+		p.logger.Error("failed to prepare article content", "feed_id", feed.ID, "error", err)
+		return
 	}
 
 	newCount, err := p.store.BatchCreateItemsIgnore(feed.ID, inputs)

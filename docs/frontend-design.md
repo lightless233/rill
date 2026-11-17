@@ -57,6 +57,16 @@ management (`/feeds`) hosts grouped feed/group CRUD, refresh-all, and
 OPML import/export. Component names map to these areas directly — browse
 `frontend/src/components/` for the implementation.
 
+### Feed extraction preview
+
+The feed edit dialog's advanced section owns the optional body/exclude
+selectors and an explicit preview action. Preview uses the current draft
+selectors and proxy, sends only on click, clears stale results when an input
+changes, and renders the returned HTML through `processArticleContent`.
+Saving uses the existing feed PATCH; cleared selectors are sent as explicit
+empty strings while untouched fields are omitted. Preview never saves rules or
+article state.
+
 `/s/<token>` is a standalone public snapshot page. It is exempt from the root
 session guard and settings pull, renders no `AppLayout`/sidebar, and uses the
 same article sanitizer as the drawer. A protected link shows only a passcode

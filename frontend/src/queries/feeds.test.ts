@@ -16,6 +16,8 @@ function makeFeed(id: number): Feed {
     link: `https://example.com/feed/${id}.xml`,
     site_url: "https://example.com",
     suspended: false,
+    content_selector: "",
+    exclude_selector: "",
     created_at: 1000,
     updated_at: 1000,
     fetch_state: {

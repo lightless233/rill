@@ -210,6 +210,13 @@ Periodic pull skips feed when:
   - `304`: treat as successful check without item parsing
 - If a `304` response omits validators or cache headers, previous stored values are kept.
 
+### Per-feed article extraction
+
+- A feed may store a body `content_selector` and an optional `exclude_selector`. A nonempty body selector enables extraction only for newly discovered items; an empty selector keeps the parsed RSS body and makes no article requests.
+- Extraction runs before `BatchCreateItemsIgnore`, serially inside the feed's existing pull admission slot and attempt deadline. It follows the same `httpc` proxy/SSRF/redirect policy as feed fetching, bounds the decompressed page, decodes its charset, and serializes the selected roots as outer HTML.
+- On extraction failure, no match/empty content, page-size overflow or attempt-deadline exhaustion, the parsed RSS content remains the canonical body. A successful feed refresh therefore does not prove every article was enriched; the fallback count and reason are logged.
+- Stored articles are never re-extracted by later pulls, even when the rule changes. There is no historical backfill, per-article retry or second body store. Preview uses the same extractor with draft rules and a shorter synchronous deadline and never persists rules or article data.
+
 ### Pull decision flow
 
 ```mermaid

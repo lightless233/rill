@@ -15,6 +15,8 @@ export interface Feed {
   site_url?: string;
   suspended: boolean;
   proxy?: string;
+  content_selector: string;
+  exclude_selector: string;
   refresh_interval_seconds?: number | null;
   created_at: number;
   updated_at: number;
@@ -233,7 +235,21 @@ export interface UpdateFeedRequest {
   site_url?: string;
   suspended?: boolean;
   proxy?: string;
+  content_selector?: string;
+  exclude_selector?: string;
   refresh_interval_seconds?: number | null;
+}
+
+export interface PreviewFeedExtractionRequest {
+  url: string;
+  content_selector: string;
+  exclude_selector?: string;
+  proxy?: string;
+}
+
+export interface PreviewFeedExtractionResponse {
+  content: string;
+  url: string;
 }
 
 export interface ValidateFeedRequest {

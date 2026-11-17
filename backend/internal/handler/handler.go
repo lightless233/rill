@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/0x2E/fusion/internal/auth"
 	"github.com/0x2E/fusion/internal/config"
@@ -36,6 +37,10 @@ type Handler struct {
 	shareLimiter *loginLimiter
 	eventHub     *eventhub.Hub
 	lastSweep    int64
+
+	// previewTimeout is an unexported test override; zero uses the configured
+	// pull timeout capped at 20 seconds.
+	previewTimeout time.Duration
 
 	refreshAllMu      sync.Mutex
 	refreshAllRunning bool
@@ -156,6 +161,7 @@ func (h *Handler) SetupRouter() *gin.Engine {
 			auth.DELETE("/feeds/:id", h.deleteFeed)
 			auth.POST("/feeds/validate", h.validateFeed)
 			auth.POST("/feeds/:id/refresh", h.refreshFeed)
+			auth.POST("/feeds/:id/extraction/preview", h.previewFeedExtraction)
 
 			auth.GET("/app", h.getAppInfo)
 

@@ -16,6 +16,8 @@ import type {
   UpdateFeedRequest,
   ValidateFeedRequest,
   ValidateFeedResponse,
+  PreviewFeedExtractionRequest,
+  PreviewFeedExtractionResponse,
   CreateBookmarkRequest,
   MarkAllItemsReadRequest,
   MarkAllItemsReadResponse,
@@ -93,6 +95,17 @@ export const feedAPI = {
 
   update: (id: number, data: UpdateFeedRequest) =>
     api.patch<APIResponse<Feed>>(`/feeds/${id}`, data),
+
+  previewExtraction: (
+    id: number,
+    data: PreviewFeedExtractionRequest,
+    options?: RequestInit,
+  ) =>
+    api.post<APIResponse<PreviewFeedExtractionResponse>>(
+      `/feeds/${id}/extraction/preview`,
+      data,
+      options,
+    ),
 
   delete: (id: number) => api.delete<void>(`/feeds/${id}`),
 

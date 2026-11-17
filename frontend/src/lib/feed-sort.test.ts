@@ -13,6 +13,8 @@ function makeFeed(id: number, unreadCount: number): Feed {
     name: `Feed ${id}`,
     link: `https://example.com/${id}.xml`,
     suspended: false,
+    content_selector: "",
+    exclude_selector: "",
     created_at: 0,
     updated_at: 0,
     fetch_state: {

@@ -6,7 +6,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { feedAPI, type Feed } from "@/lib/api";
+import { feedAPI, type Feed, type PreviewFeedExtractionRequest } from "@/lib/api";
 import { queryKeys } from "./keys";
 
 export const feedQueries = {
@@ -143,6 +143,25 @@ export function useUpdateFeed() {
       qc.setQueryData(queryKeys.feeds.list(), (old: Feed[] | undefined) =>
         old?.map((f) => (f.id === updated.id ? updated : f)),
       );
+    },
+  });
+}
+
+interface PreviewFeedExtractionVariables {
+  feedId: number;
+  data: PreviewFeedExtractionRequest;
+  signal?: AbortSignal;
+}
+
+export function usePreviewFeedExtraction() {
+  return useMutation({
+    mutationFn: async ({ feedId, data, signal }: PreviewFeedExtractionVariables) => {
+      const res = await feedAPI.previewExtraction(
+        feedId,
+        data,
+        signal ? { signal } : undefined,
+      );
+      return res.data!;
     },
   });
 }

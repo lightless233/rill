@@ -11,6 +11,7 @@ import (
 
 	"log/slog"
 
+	"github.com/0x2E/fusion/internal/extract"
 	"github.com/0x2E/fusion/internal/pkg/httpc"
 	"github.com/0x2E/fusion/internal/pull"
 	"github.com/0x2E/fusion/internal/store"
@@ -33,6 +34,8 @@ type updateFeedRequest struct {
 	SiteURL                *string `json:"site_url"`
 	Suspended              *bool   `json:"suspended"`
 	Proxy                  *string `json:"proxy"`
+	ContentSelector        *string `json:"content_selector"`
+	ExcludeSelector        *string `json:"exclude_selector"`
 	RefreshIntervalSeconds *int64  `json:"refresh_interval_seconds"`
 }
 
@@ -223,6 +226,26 @@ func (h *Handler) updateFeed(c *gin.Context) {
 		}
 		trimmedProxy := strings.TrimSpace(*req.Proxy)
 		params.Proxy = &trimmedProxy
+	}
+	if req.ContentSelector != nil {
+		trimmed := strings.TrimSpace(*req.ContentSelector)
+		if trimmed != "" {
+			if err := extract.ValidateSelector(trimmed); err != nil {
+				badRequestError(c, "invalid content_selector")
+				return
+			}
+		}
+		params.ContentSelector = &trimmed
+	}
+	if req.ExcludeSelector != nil {
+		trimmed := strings.TrimSpace(*req.ExcludeSelector)
+		if trimmed != "" {
+			if err := extract.ValidateSelector(trimmed); err != nil {
+				badRequestError(c, "invalid exclude_selector")
+				return
+			}
+		}
+		params.ExcludeSelector = &trimmed
 	}
 	// refresh_interval_seconds on update: absent = keep, 0 = clear back to the
 	// global interval, other values must be whitelisted.

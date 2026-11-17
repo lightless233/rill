@@ -89,11 +89,14 @@ Depends on T1.
   saved versus draft proxy, and call the T1 extractor. Preview has no store
   writes or pull-state updates. At handler entry, bind it to the HTTP request
   context with `min(configured pull timeout, 20 seconds)` as the work budget,
-  covering input decoding, validation, fetch and extraction. Check deadline
-  errors before writing success and return `502` for an exhausted preview
-  budget, including expiry during URL/DNS validation rather than misclassifying
-  it as invalid input. Client cancellation stops work. Preserve the current global server
-  write timeout. Use the standard response/error helpers.
+  covering input decoding, validation, fetch and extraction. Gin's JSON
+  binding does not observe the request context; check `ctx.Err()` after binding
+  so a deadline during body decoding is not reported as invalid input. Check
+  deadline errors before writing success and return `502` for an exhausted
+  preview budget, including expiry during request decoding or URL/DNS
+  validation rather than misclassifying it as invalid input. Client cancellation
+  stops work. Preserve the current global server write timeout. Use the standard
+  response/error helpers.
 - Mirror fields and preview types in
   [frontend API types](../../frontend/src/lib/api/types.ts) and the existing
   feed API client. Do not build a separate HTTP client or preview cache.
@@ -126,7 +129,8 @@ Depends on T1/T2.
   existing attempt context. On success replace only the pending article's
   content; preserve title, GUID, URL, publication date and normal unread state.
   On article extraction failure keep its parsed RSS content and log the
-  failure. Do not add per-article retry or source failure backoff.
+  affected feed/article and failure without response bodies or secrets. Do not
+  add per-article retry or source failure backoff.
 - The existing attempt deadline covers the entire RSS-plus-extraction attempt.
   After that deadline, stop origin requests and retain RSS content for remaining
   new entries, then use normal insertion/fetch-success handling while the
@@ -134,7 +138,8 @@ Depends on T1/T2.
   Do not keep an SQLite transaction open during HTTP work or add a second
   semaphore, queue or scheduler.
 - Log the number/reason of RSS fallbacks when the total deadline prevents full
-  coverage. This explicitly accepts partial extraction for a slow/large batch;
+  coverage, using the same redaction. This explicitly accepts partial extraction
+  for a slow/large batch;
   successful feed refresh does not mean every article was enriched. Stored
   fallback rows are not retried on later ordinary pulls. Do not silently change
   this into per-article timeout resets or add a historical retry mechanism.
@@ -150,8 +155,9 @@ Include enough delayed new articles to exhaust the shared deadline after only
 some extractions finish, then verify RSS fallback for the remainder, explicit
 fallback logging and no extraction backfill on the following pull.
 Inspect saved content and actual origin request counts, not only mock calls.
-Check that ordinary item reads and new bookmark/share snapshots receive that
-saved body using existing consumer tests where appropriate.
+Check that ordinary item reads, the existing translation/summary preparation and
+new bookmark/share snapshots receive that saved body using existing consumer
+tests where appropriate.
 
 ## T4 — Configure rules and render an explicit preview
 
@@ -173,9 +179,10 @@ Depends on T2; integrated acceptance also requires T3.
   Use normal mutation pending state rather than a polling loop or persistent
   preview query.
 - Save both selector changes using the existing partial-update mutation and
-  cache update. Compare trimmed draft values with saved values: omit unchanged
-  selectors, but send `""` for a deliberate clear, including whitespace-only
-  edits. Do not copy the existing proxy field's `trim() || undefined` pattern;
+  cache update. Compare trimmed draft values with saved values, treating a
+  missing saved selector as empty: omit unchanged selectors, but send `""` for
+  a deliberate clear, including whitespace-only edits. Do not copy the existing
+  proxy field's `trim() || undefined` pattern;
   JSON serialization would drop the clear. Leave unrelated proxy-edit behavior
   unchanged. Include concise localized guidance that rules apply to future
   new articles, not historical rows. Follow existing i18n dictionary conventions.

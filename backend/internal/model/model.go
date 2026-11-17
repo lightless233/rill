@@ -18,6 +18,8 @@ type Feed struct {
 	SiteURL                string `json:"site_url,omitempty"`
 	Suspended              bool   `json:"suspended"`
 	Proxy                  string `json:"proxy,omitempty"`
+	ContentSelector        string `json:"content_selector"`
+	ExcludeSelector        string `json:"exclude_selector"`
 	RefreshIntervalSeconds *int64 `json:"refresh_interval_seconds,omitempty"`
 	CreatedAt              int64  `json:"created_at"`
 	UpdatedAt              int64  `json:"updated_at"`

@@ -153,3 +153,13 @@ Three cases return the status with an empty body instead: unknown routes
   passcodes per token and client IP within fifteen minutes produce `429`;
   success clears that state. Passcodes are four `A-Z0-9` characters,
   case-insensitive, and never appear in the URL.
+- `POST /api/feeds/:id/extraction/preview` is an authenticated, synchronous
+  article-page preview. It uses a work deadline of the smaller of the configured
+  pull timeout and 20 seconds, starting at handler entry. `url` and a nonempty
+  `content_selector` are required; `exclude_selector` defaults empty, and an
+  omitted `proxy` uses the feed's saved proxy while an explicit empty proxy
+  means a direct request. Invalid URL/proxy/selector input, blocked targets, no
+  match and empty extraction return `400`; a missing feed returns `404`; origin
+  DNS/network/timeout/non-success, unsupported document type and the article
+  size limit return `502`. Preview never persists rules, articles, bookmarks,
+  shares or fetch state.

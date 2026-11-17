@@ -13,7 +13,8 @@ import (
 // feedSelectColumns is the shared feed + fetch-state projection used by every
 // feed read. ListFeeds appends the two item-count aggregates on top of it.
 const feedSelectColumns = `f.id, f.group_id, f.name, f.link, f.site_url,
-	       f.suspended, f.proxy, f.refresh_interval_seconds, f.created_at, f.updated_at,
+	       f.suspended, f.proxy, f.content_selector, f.exclude_selector,
+	       f.refresh_interval_seconds, f.created_at, f.updated_at,
 	       COALESCE(fs.etag, ''), COALESCE(fs.last_modified, ''), COALESCE(fs.cache_control, ''),
 	       COALESCE(fs.expires_at, 0), COALESCE(fs.last_checked_at, 0), COALESCE(fs.next_check_at, 0),
 	       COALESCE(fs.last_http_status, 0), COALESCE(fs.retry_after_until, 0), COALESCE(fs.last_success_at, 0),
@@ -37,6 +38,8 @@ func scanFeed(row rowScanner, withCounts bool) (*model.Feed, error) {
 		&f.SiteURL,
 		&suspended,
 		&f.Proxy,
+		&f.ContentSelector,
+		&f.ExcludeSelector,
 		&refreshIntervalSeconds,
 		&f.CreatedAt,
 		&f.UpdatedAt,
@@ -75,7 +78,8 @@ func (s *Store) ListFeeds() ([]*model.Feed, error) {
 		LEFT JOIN feed_fetch_state fs ON fs.feed_id = f.id
 		LEFT JOIN items i ON i.feed_id = f.id
 		GROUP BY f.id, f.group_id, f.name, f.link, f.site_url,
-		         f.suspended, f.proxy, f.refresh_interval_seconds, f.created_at, f.updated_at,
+		         f.suspended, f.proxy, f.content_selector, f.exclude_selector,
+		         f.refresh_interval_seconds, f.created_at, f.updated_at,
 		         fs.etag, fs.last_modified, fs.cache_control, fs.expires_at, fs.last_checked_at,
 		         fs.next_check_at, fs.last_http_status, fs.retry_after_until, fs.last_success_at,
 		         fs.last_error_at, fs.last_error, fs.consecutive_failures
@@ -234,6 +238,9 @@ type UpdateFeedParams struct {
 	SiteURL   *string
 	Suspended *bool
 	Proxy     *string
+	// ContentSelector/ExcludeSelector are per-feed CSS extraction rules.
+	ContentSelector *string
+	ExcludeSelector *string
 	// RefreshIntervalSeconds sets a per-feed override; ClearRefreshInterval
 	// resets it to NULL (global interval). ClearRefreshInterval wins when both
 	// are set.
@@ -269,6 +276,14 @@ func (s *Store) UpdateFeed(id int64, params UpdateFeedParams) error {
 	if params.Proxy != nil {
 		setClauses = append(setClauses, "proxy = :proxy")
 		args = append(args, sql.Named("proxy", *params.Proxy))
+	}
+	if params.ContentSelector != nil {
+		setClauses = append(setClauses, "content_selector = :content_selector")
+		args = append(args, sql.Named("content_selector", *params.ContentSelector))
+	}
+	if params.ExcludeSelector != nil {
+		setClauses = append(setClauses, "exclude_selector = :exclude_selector")
+		args = append(args, sql.Named("exclude_selector", *params.ExcludeSelector))
 	}
 	switch {
 	case params.ClearRefreshInterval:
