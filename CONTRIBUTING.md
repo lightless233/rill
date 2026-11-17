@@ -46,6 +46,9 @@ remote base require scanning the pushed ref's full history. Findings or scan
 errors block the push. Scans run locally without online credential verification
 and print only detector names and Git locations, never credential values.
 Review findings before pushing; do not bypass the hook to publish a real secret.
+The wrapper contains one exact exception for a historical npm checksum verified
+against the registry. It does not exclude lockfiles or disable a detector;
+other findings and scan errors still block the push.
 
 To scan all locally reachable Git history manually:
 

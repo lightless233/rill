@@ -2,6 +2,7 @@
 """Scan Git history with TruffleHog without printing credential values."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -38,9 +39,24 @@ def main():
     # to exclude the working tree and index without making another clone.
     result = subprocess.run(command, capture_output=True, text=True)
     findings = 0
+    ignored = 0
     for line in result.stdout.splitlines():
         finding = json.loads(line)
         metadata = finding["SourceMetadata"]["Data"]["Git"]
+        # This immutable historical value is part of autoprefixer@10.4.17's
+        # SHA-512 SRI, checked against npm. Do not exclude the file or detector.
+        if (
+            metadata["commit"] == "e9b065e9fbb9596332ab29e16b0aad15d8887716"
+            and metadata["file"] == "frontend/package-lock.json"
+            and metadata.get("line") == 1407
+            and hashlib.sha256(finding["Raw"].encode()).hexdigest()
+            == "9879a1686984a4d10fe62f4a037577990aece63895cd1ed1b29bb89f59e42236"
+            and finding.get("Verified") is False
+            and finding["DetectorName"] == "FixerIO"
+        ):
+            print("TruffleHog: ignored one confirmed historical npm checksum false positive.")
+            ignored += 1
+            continue
         print(json.dumps({
             "detector": finding["DetectorName"],
             "file": metadata["file"],
@@ -54,7 +70,7 @@ def main():
               file=sys.stderr)
         # Scanner diagnostics can contain sensitive context. Do not echo them.
         return 1
-    if findings or result.returncode == 183:
+    if findings or (result.returncode == 183 and ignored == 0):
         print(f"TruffleHog: {findings} potential credential findings; push blocked.",
               file=sys.stderr)
         return 183
