@@ -29,6 +29,13 @@
     - Repeating what the code already says
     - Implementation details that naming makes clear
 
+## Git Commits
+
+- Automatically commit completed, authorized changes unless the user requests otherwise. Review-only requests do not authorize edits or commits. Push only when explicitly authorized.
+- Preserve the configured Git author. Add a `Co-Authored-By` trailer identifying the actual agent and verified model; never copy another agent's attribution. For Codex, use `Co-Authored-By: Codex <verified-model-name> <noreply@openai.com>`, replacing the model placeholder with the actual model identifier.
+- In Codex, read `CODEX_THREAD_ID` to identify the current session. Locate its matching `.jsonl` rollout under `$CODEX_HOME/sessions` (default `~/.codex/sessions`), then read `payload.model` from the latest record whose `type` is `turn_context`. Read only the metadata needed for attribution. Do not infer the current model from configuration defaults or previous commit trailers; if it cannot be verified, ask the user instead of guessing.
+- After every commit, proactively report its hash, subject, author, and exact trailer text for the user to confirm.
+
 ## Go Development
 
 - After modifying Go code, run `goimports -w .` before verification.
