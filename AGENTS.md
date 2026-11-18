@@ -45,6 +45,9 @@
 
 ## Frontend Development
 
+- When the user supplies a UI reference, inspect its hierarchy, visible information, alignment, and interaction states before designing the change. Use Rill's existing components and theme to reproduce the relevant behavior.
+- To reveal more items in an existing list, use one inline button and show the number of hidden rows when known. Reveal the items in the same list. Match adjacent rows' typography, height, indentation, and full-row hover. Reserve collapsible sections for actual groups and underlined link styles for navigation.
+- Check visual changes in the running local app before delivery. Inspect the relevant default, hover, focus, and post-click states against adjacent controls and any supplied reference.
 - For frontend code changes, run `pnpm run typecheck`, `pnpm run lint`, `pnpm test` (vitest), and `pnpm run check:i18n` as relevant to the change. Typecheck regenerates the TanStack route tree first; `routeTree.gen.ts` is generated and gitignored.
 - shadcn components use Base UI (`@base-ui/react`) on the `base-vega` style. Regenerate via CLI (`pnpm dlx shadcn@latest add <component> --overwrite`) instead of hand-editing source files in `frontend/src/components/ui/`.
 
