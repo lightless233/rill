@@ -313,7 +313,7 @@ export function ArticleList() {
       navigateToList({
         feedId: target.feedId,
         groupId: null,
-        filter: "unread",
+        filter: articleFilter,
         articleId: null,
       });
     } else if (target.kind === "group") {
@@ -415,8 +415,6 @@ export function ArticleList() {
         selectedGroupId,
       );
       const nextTarget =
-        articleFilter === "unread" &&
-        (selectedFeedId !== null || selectedGroupId !== null) &&
         remainingScopeUnread === 0
           ? resolveNextUnreadTarget({
               groups,

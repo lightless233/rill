@@ -43,7 +43,7 @@ function makeFeed(id: number, groupId: number, unreadCount: number): Feed {
 }
 
 describe("resolveNextUnreadTarget", () => {
-  it("returns null outside unread filter or in global scope", () => {
+  it("returns null for All group scope, Starred feed scope, or global scope", () => {
     const groups = [makeGroup(1), makeGroup(2)];
     const feeds = [makeFeed(10, 1, 3), makeFeed(20, 2, 5)];
 
@@ -54,8 +54,8 @@ describe("resolveNextUnreadTarget", () => {
         afterFeeds: [makeFeed(10, 1, 0), makeFeed(20, 2, 5)],
         isFeedsSuccess: true,
         isFeedsError: false,
-        selectedFeedId: 10,
-        selectedGroupId: null,
+        selectedFeedId: null,
+        selectedGroupId: 1,
         articleFilter: "all",
       }),
     ).toBeNull();
@@ -67,8 +67,8 @@ describe("resolveNextUnreadTarget", () => {
         afterFeeds: [makeFeed(10, 1, 0), makeFeed(20, 2, 5)],
         isFeedsSuccess: true,
         isFeedsError: false,
-        selectedFeedId: null,
-        selectedGroupId: 1,
+        selectedFeedId: 10,
+        selectedGroupId: null,
         articleFilter: "starred",
       }),
     ).toBeNull();
@@ -105,35 +105,35 @@ describe("resolveNextUnreadTarget", () => {
     ).toEqual({ kind: "feed", feedId: 20 });
   });
 
-  it("advances to the next unread feed using pre-clear sidebar order", () => {
-    const groups = [makeGroup(1), makeGroup(2)];
-    // In Group 1, unread-first order puts Feed 11(unread), Feed 12(unread), Feed 10(read).
-    const beforeFeeds = [
-      makeFeed(10, 1, 0),
-      makeFeed(11, 1, 4),
-      makeFeed(12, 1, 2),
-      makeFeed(20, 2, 0),
-      makeFeed(21, 2, 7),
-    ];
-    // Feed 11 just became read (0); if sorted after clear, 11 would fall below 12.
-    // Using beforeFeeds keeps 12 immediately next after 11.
-    const afterFeeds = beforeFeeds.map((f) =>
-      f.id === 11 ? { ...f, unread_count: 0 } : f,
-    );
+  it.each(["unread", "all"] as const)(
+    "advances from %s to the first unread feed in the same group",
+    (articleFilter) => {
+      const groups = [makeGroup(1), makeGroup(2)];
+      const beforeFeeds = [
+        makeFeed(10, 1, 0),
+        makeFeed(11, 1, 4),
+        makeFeed(12, 1, 2),
+        makeFeed(13, 1, 5),
+        makeFeed(21, 2, 7),
+      ];
+      const afterFeeds = beforeFeeds.map((f) =>
+        f.id === 13 ? { ...f, unread_count: 0 } : f,
+      );
 
-    expect(
-      resolveNextUnreadTarget({
-        groups,
-        beforeFeeds,
-        afterFeeds,
-        isFeedsSuccess: true,
-        isFeedsError: false,
-        selectedFeedId: 11,
-        selectedGroupId: null,
-        articleFilter: "unread",
-      }),
-    ).toEqual({ kind: "feed", feedId: 12 });
-  });
+      expect(
+        resolveNextUnreadTarget({
+          groups,
+          beforeFeeds,
+          afterFeeds,
+          isFeedsSuccess: true,
+          isFeedsError: false,
+          selectedFeedId: 13,
+          selectedGroupId: null,
+          articleFilter,
+        }),
+      ).toEqual({ kind: "feed", feedId: 11 });
+    },
+  );
 
   it("crosses into the next folder when remaining feeds in current folder are read", () => {
     const groups = [makeGroup(1), makeGroup(2), makeGroup(3)];

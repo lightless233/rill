@@ -184,7 +184,7 @@ function pickWrappedCandidate<T>(
 
 /**
  * Resolves the next destination after clearing the current feed or group's unread queue.
- * Returns `null` when auto-advance does not apply (non-unread tabs or global scope).
+ * Feed navigation also applies when marking a feed read from the All tab.
  */
 export function resolveNextUnreadTarget({
   groups,
@@ -197,7 +197,8 @@ export function resolveNextUnreadTarget({
   articleFilter,
 }: ResolveNextUnreadTargetInput): UnreadNavigationTarget | null {
   if (
-    articleFilter !== "unread" ||
+    (articleFilter !== "unread" &&
+      !(articleFilter === "all" && selectedFeedId !== null)) ||
     (selectedFeedId === null && selectedGroupId === null)
   ) {
     return null;
@@ -228,6 +229,20 @@ export function resolveNextUnreadTarget({
     return nextGroup
       ? { kind: "group", groupId: nextGroup.id }
       : { kind: "all" };
+  }
+
+  const currentFeed = afterFeeds.find((feed) => feed.id === selectedFeedId);
+  if (currentFeed) {
+    // Unread feeds retain their relative order in the sidebar.
+    const firstUnreadInGroup = afterFeeds.find(
+      (feed) =>
+        feed.group_id === currentFeed.group_id &&
+        feed.id !== currentFeed.id &&
+        feed.unread_count > 0,
+    );
+    if (firstUnreadInGroup) {
+      return { kind: "feed", feedId: firstUnreadInGroup.id };
+    }
   }
 
   const orderedFeedIds = buildSidebarOrderedFeedIds(
