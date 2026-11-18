@@ -141,7 +141,7 @@ export const ptMessages: PartialMessages = {
   "sidebar.feedsActions": "Ações das pastas",
   "sidebar.loadFailed": "Falha ao carregar os feeds",
   "sidebar.manageFeeds": "Gerenciar feeds",
-  "sidebar.readFeeds": "Feeds lidos",
+  "sidebar.showReadFeeds": "Mostrar feeds lidos",
   "sidebar.search": "Pesquisar",
   "sidebar.settings": "Configuracoes",
   "sidebar.signOut": "Sair",

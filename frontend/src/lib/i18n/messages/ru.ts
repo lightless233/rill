@@ -141,7 +141,7 @@ export const ruMessages: PartialMessages = {
   "sidebar.feedsActions": "Действия с папками",
   "sidebar.loadFailed": "Не удалось загрузить ленты",
   "sidebar.manageFeeds": "Управление лентами",
-  "sidebar.readFeeds": "Прочитанные ленты",
+  "sidebar.showReadFeeds": "Показать прочитанные ленты",
   "sidebar.search": "Поиск",
   "sidebar.settings": "Настройки",
   "sidebar.signOut": "Выйти",

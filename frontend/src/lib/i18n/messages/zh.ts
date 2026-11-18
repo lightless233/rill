@@ -141,7 +141,7 @@ export const zhMessages: PartialMessages = {
   "sidebar.feedsActions": "订阅文件夹操作",
   "sidebar.loadFailed": "加载订阅源失败",
   "sidebar.manageFeeds": "管理订阅",
-  "sidebar.readFeeds": "已读订阅",
+  "sidebar.showReadFeeds": "显示已读订阅",
   "sidebar.search": "搜索",
   "sidebar.settings": "设置",
   "sidebar.signOut": "退出登录",

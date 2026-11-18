@@ -141,7 +141,7 @@ export const frMessages: PartialMessages = {
   "sidebar.feedsActions": "Actions sur les dossiers",
   "sidebar.loadFailed": "Échec du chargement des flux",
   "sidebar.manageFeeds": "Gérer les flux",
-  "sidebar.readFeeds": "Flux lus",
+  "sidebar.showReadFeeds": "Afficher les flux lus",
   "sidebar.search": "Rechercher",
   "sidebar.settings": "Paramètres",
   "sidebar.signOut": "Se déconnecter",
