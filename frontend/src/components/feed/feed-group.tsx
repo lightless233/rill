@@ -136,8 +136,9 @@ function FeedGroupItems({ feeds }: { feeds: Feed[] }) {
   const { t } = useI18n();
   const [showReadFeeds, setShowReadFeeds] = useState(false);
   const unreadFeeds = feeds.filter((feed) => feed.unread_count > 0);
+  const hiddenFeedCount = feeds.length - unreadFeeds.length;
   const hasHiddenReadFeeds =
-    !showReadFeeds && unreadFeeds.length > 0 && unreadFeeds.length < feeds.length;
+    !showReadFeeds && unreadFeeds.length > 0 && hiddenFeedCount > 0;
 
   return (
     <div className="w-full min-w-0 pl-5">
@@ -149,10 +150,12 @@ function FeedGroupItems({ feeds }: { feeds: Feed[] }) {
           type="button"
           variant="link"
           size="sm"
-          className="px-2 text-xs font-normal text-muted-foreground"
+          className="border-0 px-2 font-normal text-foreground"
           onClick={() => setShowReadFeeds(true)}
         >
-          {t("sidebar.showReadFeeds")}
+          {hiddenFeedCount === 1
+            ? t("sidebar.oneMoreFeed")
+            : t("sidebar.moreFeeds", { count: hiddenFeedCount })}
         </Button>
       )}
     </div>
