@@ -15,6 +15,7 @@ import (
 	"github.com/0x2E/fusion/internal/model"
 	"github.com/0x2E/fusion/internal/pkg/httpc"
 	"github.com/mmcdole/gofeed"
+	"github.com/mmcdole/gofeed/rss"
 )
 
 // ParsedItem represents a feed item after parsing and field mapping.
@@ -84,6 +85,7 @@ func FetchAndParse(ctx context.Context, feed *model.Feed, timeout time.Duration,
 	}
 
 	fp := gofeed.NewParser()
+	fp.KeepOriginalFeed = true
 	parsedFeed, err := fp.Parse(resp.Body)
 	if err != nil {
 		return result, fmt.Errorf("parse feed: %w", err)
@@ -99,9 +101,20 @@ func FetchAndParse(ctx context.Context, feed *model.Feed, timeout time.Duration,
 		baseURL, _ = url.Parse(feed.Link)
 	}
 
+	// The default translator preserves item order but drops the RSS isPermaLink attribute.
+	originalRSS, _ := parsedFeed.OriginalFeed().(*rss.Feed)
 	items := make([]*ParsedItem, 0, len(parsedFeed.Items))
-	for _, item := range parsedFeed.Items {
-		items = append(items, mapItem(item, baseURL))
+	for i, item := range parsedFeed.Items {
+		parsed := mapItem(item, baseURL)
+		if parsed.Link == "" && originalRSS != nil {
+			if guid := originalRSS.Items[i].GUID; guid != nil && guid.IsPermalink == "true" {
+				link, err := url.Parse(parsed.GUID)
+				if err == nil && link.Hostname() != "" && (link.Scheme == "http" || link.Scheme == "https") {
+					parsed.Link = link.String()
+				}
+			}
+		}
+		items = append(items, parsed)
 	}
 
 	result.Items = items

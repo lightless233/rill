@@ -90,6 +90,40 @@ func TestFetchAndParseParsesCacheMetadata(t *testing.T) {
 	}
 }
 
+func TestFetchAndParseUsesRSSPermalinkWhenLinkMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Test</title><link>https://example.com</link>
+			<item><title>Implicit permalink</title><guid>https://example.com/implicit</guid><description></description></item>
+			<item><title>Explicit permalink</title><guid isPermaLink="true">https://example.com/explicit</guid></item>
+			<item><title>Explicit link</title><guid>https://example.com/guid</guid><link>/article</link></item>
+			<item><title>Identifier only</title><guid isPermaLink="false">https://example.com/identifier</guid></item>
+			<item><title>Opaque identifier</title><guid>opaque-id</guid></item>
+		</channel></rss>`))
+	}))
+	defer server.Close()
+
+	result, err := FetchAndParse(context.Background(), &model.Feed{Link: server.URL}, time.Second, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct{ guid, link string }{
+		{"https://example.com/implicit", "https://example.com/implicit"},
+		{"https://example.com/explicit", "https://example.com/explicit"},
+		{"https://example.com/guid", "https://example.com/article"},
+		{"https://example.com/identifier", ""},
+		{"opaque-id", ""},
+	}
+	if len(result.Items) != len(want) {
+		t.Fatalf("got %d items, want %d", len(result.Items), len(want))
+	}
+	for i, expected := range want {
+		item := result.Items[i]
+		if item.GUID != expected.guid || item.Link != expected.link {
+			t.Errorf("item %q: got GUID %q and link %q, want GUID %q and link %q", item.Title, item.GUID, item.Link, expected.guid, expected.link)
+		}
+	}
+}
+
 func TestMapItemFallbackGUIDWhenMissingGUIDAndLink(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	item := &gofeed.Item{

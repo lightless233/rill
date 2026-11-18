@@ -96,11 +96,12 @@ func TestRefreshFeedExtractsNewArticles(t *testing.T) {
 		}
 	})
 
+	secondURL := articles.URL + "/two"
 	rss := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		_, _ = fmt.Fprint(w, feedXML(articles.URL,
 			feedItem("g1", "One", articles.URL+"/one", "RSS one"),
-			feedItem("g2", "Two", articles.URL+"/two", "RSS two"),
+			fmt.Sprintf(`<item><guid>%s</guid><title>Two</title><description></description></item>`, secondURL),
 		))
 	}))
 	defer rss.Close()
@@ -126,8 +127,11 @@ func TestRefreshFeedExtractsNewArticles(t *testing.T) {
 	byGUID := make(map[string]string, len(items))
 	for _, item := range items {
 		byGUID[item.GUID] = item.Content
+		if item.GUID == secondURL && item.Link != secondURL {
+			t.Errorf("stored link = %q, want %q", item.Link, secondURL)
+		}
 	}
-	if !strings.Contains(byGUID["g1"], "Extracted one") || !strings.Contains(byGUID["g2"], "Extracted two") {
+	if !strings.Contains(byGUID["g1"], "Extracted one") || !strings.Contains(byGUID[secondURL], "Extracted two") {
 		t.Fatalf("expected extracted content, got %+v", byGUID)
 	}
 	if got := articleCalls.Load(); got != 2 {
