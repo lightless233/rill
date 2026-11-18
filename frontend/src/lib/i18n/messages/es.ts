@@ -141,6 +141,7 @@ export const esMessages: PartialMessages = {
   "sidebar.feedsActions": "Acciones de carpetas",
   "sidebar.loadFailed": "No se pudieron cargar los feeds",
   "sidebar.manageFeeds": "Gestionar feeds",
+  "sidebar.readFeeds": "Feeds leídos",
   "sidebar.search": "Buscar",
   "sidebar.settings": "Configuracion",
   "sidebar.signOut": "Cerrar sesión",

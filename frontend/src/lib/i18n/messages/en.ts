@@ -139,6 +139,7 @@ export const enMessages = {
   "sidebar.feedsActions": "Feed folder actions",
   "sidebar.loadFailed": "Failed to load feeds",
   "sidebar.manageFeeds": "Manage Feeds",
+  "sidebar.readFeeds": "Read feeds",
   "sidebar.search": "Search",
   "sidebar.settings": "Settings",
   "sidebar.signOut": "Sign out",

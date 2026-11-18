@@ -4,7 +4,13 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { ChevronRight, GripVertical } from "lucide-react";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useUrlState } from "@/hooks/use-url-state";
 import { FeedItem } from "./feed-item";
@@ -41,6 +47,7 @@ export function FeedGroup({
   onReorderKeyDown,
   onReorderBlur,
 }: FeedGroupProps) {
+  const { t } = useI18n();
   const { selectedGroupId, setSelectedGroup } = useUrlState();
   const isSelected = selectedGroupId === groupId;
 
@@ -48,6 +55,9 @@ export function FeedGroup({
     (sum, feed) => sum + (feed.unread_count || 0),
     0,
   );
+  const unreadFeeds = feeds.filter((feed) => feed.unread_count > 0);
+  const hasMixedReadState =
+    unreadFeeds.length > 0 && unreadFeeds.length < feeds.length;
 
   return (
     <div
@@ -123,9 +133,30 @@ export function FeedGroup({
         </div>
         <CollapsibleContent>
           <div className="w-full min-w-0 pl-5">
-            {feeds.map((feed) => (
+            {(hasMixedReadState ? unreadFeeds : feeds).map((feed) => (
               <FeedItem key={feed.id} feed={feed} />
             ))}
+            {hasMixedReadState && (
+              <Collapsible>
+                <CollapsibleTrigger
+                  render={<Button variant="ghost" size="sm" />}
+                  className="group/read-feeds w-full justify-start px-2 text-xs text-muted-foreground"
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="motion-safe:transition-transform group-aria-expanded/read-feeds:rotate-90"
+                  />
+                  {t("sidebar.readFeeds")}
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  {feeds
+                    .filter((feed) => feed.unread_count <= 0)
+                    .map((feed) => (
+                      <FeedItem key={feed.id} feed={feed} />
+                    ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

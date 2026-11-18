@@ -141,6 +141,7 @@ export const deMessages: PartialMessages = {
   "sidebar.feedsActions": "Ordneraktionen",
   "sidebar.loadFailed": "Feeds konnten nicht geladen werden",
   "sidebar.manageFeeds": "Feeds verwalten",
+  "sidebar.readFeeds": "Gelesene Feeds",
   "sidebar.search": "Suchen",
   "sidebar.settings": "Einstellungen",
   "sidebar.signOut": "Abmelden",

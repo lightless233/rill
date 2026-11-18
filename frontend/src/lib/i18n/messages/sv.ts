@@ -141,6 +141,7 @@ export const svMessages: PartialMessages = {
   "sidebar.feedsActions": "Mappåtgärder",
   "sidebar.loadFailed": "Kunde inte ladda flöden",
   "sidebar.manageFeeds": "Hantera floden",
+  "sidebar.readFeeds": "Lästa flöden",
   "sidebar.search": "Sok",
   "sidebar.settings": "Installningar",
   "sidebar.signOut": "Logga ut",

@@ -69,6 +69,7 @@ import {
   useArticlePinsStore,
   usePreferencesStore,
   useReadStatePins,
+  useUIStore,
 } from "@/store";
 import type { Feed, Item } from "@/lib/api";
 
@@ -308,8 +309,25 @@ export function ArticleList() {
     [createBookmark, deleteBookmark, getBookmarkByItemId, t],
   );
 
-  const applyTargetNavigation = (target: UnreadNavigationTarget) => {
+  const applyTargetNavigation = (
+    target: UnreadNavigationTarget,
+    afterFeeds: Feed[],
+  ) => {
     if (target.kind === "feed") {
+      const sourceGroupId = afterFeeds.find(
+        (feed) => feed.id === selectedFeedId,
+      )?.group_id;
+      const targetGroupId = afterFeeds.find(
+        (feed) => feed.id === target.feedId,
+      )?.group_id;
+      if (
+        sourceGroupId &&
+        targetGroupId &&
+        sourceGroupId !== targetGroupId &&
+        getScopeUnreadCount(afterFeeds, null, sourceGroupId) === 0
+      ) {
+        useUIStore.getState().setGroupOpen(sourceGroupId, false);
+      }
       navigateToList({
         feedId: target.feedId,
         groupId: null,
@@ -431,7 +449,7 @@ export function ArticleList() {
       const didAdvance = nextTarget !== null;
       if (didAdvance) {
         clearPins(pinsKey);
-        applyTargetNavigation(nextTarget);
+        applyTargetNavigation(nextTarget, afterFeeds);
       }
 
       showMarkReadUndoToast({
@@ -491,7 +509,7 @@ export function ArticleList() {
       });
 
       if (nextTarget) {
-        applyTargetNavigation(nextTarget);
+        applyTargetNavigation(nextTarget, afterFeeds);
       } else {
         clearPins(pinsKey);
       }
@@ -527,7 +545,7 @@ export function ArticleList() {
         articleFilter,
       });
       if (nextTarget) {
-        applyTargetNavigation(nextTarget);
+        applyTargetNavigation(nextTarget, feeds);
       }
       return;
     }
