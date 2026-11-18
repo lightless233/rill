@@ -148,9 +148,9 @@ function FeedGroupItems({ feeds }: { feeds: Feed[] }) {
       {hasHiddenReadFeeds && (
         <Button
           type="button"
-          variant="link"
+          variant="ghost"
           size="sm"
-          className="border-0 px-2 font-normal text-foreground"
+          className="w-full justify-start rounded-md border-0 px-2 font-normal text-foreground hover:bg-accent/50 dark:hover:bg-accent/50"
           onClick={() => setShowReadFeeds(true)}
         >
           {hiddenFeedCount === 1
