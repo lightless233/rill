@@ -3,6 +3,7 @@
 *.db-*
 .claude
 tmp/
+/.runtime/
 build/
 dist/
 backend/internal/web/dist/*
