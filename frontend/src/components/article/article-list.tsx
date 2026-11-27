@@ -333,6 +333,7 @@ export function ArticleList() {
         groupId: null,
         filter: articleFilter,
         articleId: null,
+        replace: false,
       });
     } else if (target.kind === "group") {
       navigateToList({
@@ -340,6 +341,7 @@ export function ArticleList() {
         feedId: null,
         filter: "unread",
         articleId: null,
+        replace: false,
       });
     } else {
       navigateToList({
@@ -347,6 +349,7 @@ export function ArticleList() {
         groupId: null,
         filter: "all",
         articleId: null,
+        replace: false,
       });
     }
   };
